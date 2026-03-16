@@ -54,24 +54,57 @@ GDAL_DATA=deps/gdal/share/gdal \
 
 ## Windows MSVC Build
 
-Prerequisites: copy `windows-deps/hdf5/` and `windows-deps/proj/` from this repo
-(or follow `windows-deps/hdf5/README.txt` and `windows-deps/proj/README.txt` if
-the automated download failed at build time).
+> **Run all commands in `cmd.exe` or PowerShell, not Git Bash.**
+> The `^` line-continuation character is CMD syntax; use `` ` `` in PowerShell.
+
+### Step 1 — Get pre-built Windows dependencies
+
+The `windows-deps/` subdirectory contains `README.txt` files for each library
+explaining where to download binaries.  Follow them in order:
+
+| Directory | What's needed |
+|-----------|---------------|
+| `windows-deps/gdal/` | `gdal_i.lib` + DLLs + headers (see `README.txt`) |
+| `windows-deps/hdf5/` | HDF5 1.14.6 MSVC binaries (see `README.txt`) |
+| `windows-deps/proj/` | PROJ 9.x MSVC binaries (see `README.txt`) |
+
+The fastest path is **vcpkg** — it handles GDAL and all its transitive
+dependencies in one command:
+
+```bat
+vcpkg install gdal:x64-windows
+```
+
+Then pass the vcpkg toolchain file to CMake (Step 2 below).
+
+### Step 2 — Configure and build
+
+**Option A — vcpkg (recommended)**
 
 ```bat
 cmake -S . -B build ^
   -G "Visual Studio 17 2022" -A x64 ^
-  -DHDF5_ROOT="%CD%\windows-deps\hdf5" ^
-  -DPROJ_ROOT="%CD%\windows-deps\proj" ^
-  -DCMAKE_PREFIX_PATH="%CD%\windows-deps\hdf5;%CD%\windows-deps\proj"
+  -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
 
 cmake --build build --config Release
 ```
 
-Add to PATH before running the executable:
+**Option B — manually placed binaries in `windows-deps/`**
 
 ```bat
-set PATH=%CD%\windows-deps\hdf5\bin;%CD%\windows-deps\proj\bin;%PATH%
+cmake -S . -B build ^
+  -G "Visual Studio 17 2022" -A x64 ^
+  -DGDAL_ROOT="%CD%\windows-deps\gdal" ^
+  -DHDF5_ROOT="%CD%\windows-deps\hdf5" ^
+  -DPROJ_ROOT="%CD%\windows-deps\proj"
+
+cmake --build build --config Release
+```
+
+### Step 3 — Set PATH before running the executable
+
+```bat
+set PATH=%CD%\windows-deps\gdal\bin;%CD%\windows-deps\hdf5\bin;%CD%\windows-deps\proj\bin;%PATH%
 set GDAL_DATA=%CD%\deps\gdal\share\gdal
 ```
 
@@ -140,6 +173,7 @@ deps/
     lib/              <- libgsf.a
 windows-deps/
   README.md
+  gdal/               <- GDAL Windows MSVC binaries (or README.txt with download instructions)
   hdf5/               <- HDF5 1.14.6 Windows MSVC binaries (or README.txt)
   proj/               <- PROJ 9.x Windows MSVC binaries (or README.txt)
 ```

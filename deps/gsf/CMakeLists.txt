@@ -11,6 +11,9 @@ if(MSVC)
     _CRT_NONSTDC_NO_WARNINGS
     fseeko=_fseeki64
     ftello=_ftelli64)
+else()
+  # ftello64 / fseeko64 are GNU extensions
+  target_compile_definitions(gsf PRIVATE _GNU_SOURCE _LARGEFILE64_SOURCE)
 endif()
 
 install(TARGETS gsf ARCHIVE DESTINATION lib)
