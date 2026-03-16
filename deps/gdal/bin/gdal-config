@@ -1,0 +1,80 @@
+#!/bin/sh
+CONFIG_LIBS="-L/home/user/gdal_bathy/deps/gdal/lib -lgdal"
+CONFIG_DEP_LIBS="-ldl -llzma -lexpat -L/usr/lib/x86_64-linux-gnu/hdf5/serial/lib -lhdf5 -lproj -lz -lstdc++ -lm"
+CONFIG_PREFIX="/home/user/gdal_bathy/deps/gdal"
+CONFIG_CFLAGS="-I/home/user/gdal_bathy/deps/gdal/include"
+CONFIG_DATA="/home/user/gdal_bathy/deps/gdal/share/gdal"
+CONFIG_VERSION="3.12.2"
+CONFIG_GNM_ENABLED=yes
+CONFIG_FORMATS="GTIFF MEM vrt XYZ HDF5 GeoJSON Shape"
+CONFIG_PLUGINDIR="/home/user/gdal_bathy/deps/gdal/lib/gdalplugins"
+usage()
+
+{
+	cat <<EOF
+Usage: gdal-config [OPTIONS]
+Options:
+	[--prefix[=DIR]]
+	[--libs]
+	[--dep-libs]
+	[--cflags]
+	[--datadir]
+	[--version]
+	[--ogr-enabled]
+	[--gnm-enabled]
+	[--formats]
+	[--plugindir]
+EOF
+	exit $1
+}
+
+if test $# -eq 0; then
+	usage 1 1>&2
+fi
+
+case $1 in
+  --libs)
+    echo $CONFIG_LIBS
+    ;;
+
+  --dep-libs)
+    echo $CONFIG_DEP_LIBS
+    ;;
+
+  --cflags)
+    echo $CONFIG_CFLAGS
+    ;;
+
+  --datadir)
+    echo $CONFIG_DATA
+    ;;
+
+  --prefix)
+    echo $CONFIG_PREFIX
+    ;;
+
+  --version)
+    echo $CONFIG_VERSION
+    ;;
+
+  --ogr-enabled)
+    echo yes
+    ;;
+
+  --gnm-enabled)
+    echo $CONFIG_GNM_ENABLED
+    ;;
+
+  --formats)
+    echo $CONFIG_FORMATS
+    ;;
+
+  --plugindir)
+    echo $CONFIG_PLUGINDIR
+    ;;
+
+  *)
+    usage 1 1>&2
+    ;;
+
+esac
