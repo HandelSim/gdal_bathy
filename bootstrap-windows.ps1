@@ -47,8 +47,32 @@ $GdalInst  = "$WinDeps\gdal"
 if (-not (Test-Path "$RepoRoot\CMakeLists.txt")) {
     throw "Run this script from the repo root (the directory containing CMakeLists.txt)."
 }
+
+# ---------------------------------------------------------------------------
+# 0b. Download GDAL source if not present
+#     gdal-3.12.2\ is gitignored so it is not in the repo checkout.
+#     GitHub archive ZIPs extract to gdal-3.12.2\ (the 'v' prefix is stripped).
+# ---------------------------------------------------------------------------
 if (-not (Test-Path $GdalSrc)) {
-    throw "GDAL source not found at $GdalSrc.  Ensure gdal-3.12.2\ is present."
+    $GdalZipUrl = "https://github.com/OSGeo/gdal/archive/refs/tags/v3.12.2.zip"
+    $GdalZip    = "$RepoRoot\gdal-3.12.2-src.zip"
+    Write-Host ""
+    Write-Host "Downloading GDAL 3.12.2 source (~120 MB) ..."
+    Write-Host "  $GdalZipUrl"
+    try {
+        Invoke-WebRequest -Uri $GdalZipUrl -OutFile $GdalZip -UseBasicParsing
+    } catch {
+        throw "Failed to download GDAL source: $_"
+    }
+    Write-Host "Extracting GDAL source ..."
+    Expand-Archive -Path $GdalZip -DestinationPath $RepoRoot -Force
+    Remove-Item $GdalZip -ErrorAction SilentlyContinue
+    if (-not (Test-Path $GdalSrc)) {
+        throw "Extraction did not produce $GdalSrc - check the ZIP contents."
+    }
+    Write-Host "GDAL source ready at $GdalSrc"
+} else {
+    Write-Host "GDAL source already present at $GdalSrc"
 }
 
 # ---------------------------------------------------------------------------
