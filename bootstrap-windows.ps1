@@ -1,139 +1,226 @@
 <#
 .SYNOPSIS
-    One-time setup: installs vcpkg, downloads vcpkg.exe, and pre-builds all
-    dependencies (GDAL, HDF5, PROJ, ...) so that cmake --preset windows-vcpkg
-    succeeds immediately.
+    One-time setup: downloads the GISInternals dependency kit and builds GDAL
+    from the repo's own source tree — no vcpkg, no pre-built executables needed.
 
 .DESCRIPTION
-    Run this once from any PowerShell window before your first build.
-    It does NOT require Administrator privileges.
+    Designed for corporate environments where group policy blocks downloaded
+    executables.  This script uses only:
+      • Invoke-WebRequest / Expand-Archive  (PowerShell built-ins, not exes)
+      • cmake.exe / cl.exe  (trusted Visual Studio tools)
 
     What it does:
-      1. Clones vcpkg to C:\vcpkg (override with -VcpkgRoot)
-      2. Downloads vcpkg.exe via Invoke-WebRequest (avoids tls12-download.exe,
-         which is commonly blocked by corporate group policy)
-      3. Unblocks vcpkg.exe so Windows does not treat it as an untrusted
-         "downloaded-from-internet" file
-      4. Installs all packages listed in vcpkg.json (GDAL + transitive deps)
-         so cmake --preset windows-vcpkg finds everything pre-built (~10-20 min)
-      5. Persists VCPKG_ROOT as a user environment variable
+      1. Locates Visual Studio 2022 and initialises the MSVC x64 environment
+      2. Downloads release-1944-x64-dev.zip from gisinternals.com (~50 MB)
+         This is a ZIP of pre-compiled MSVC 2022 x64 dependencies:
+         SQLite, PROJ, HDF5, libtiff, zlib, curl, etc.
+         (a ZIP file, not an executable — nothing is run from it directly)
+      3. Extracts the kit to windows-deps\sdk\
+      4. Configures GDAL 3.12 (source already in the repo at gdal-3.12.2\)
+         with minimal drivers: HDF5 + BAG + GeoTIFF only.  All optional
+         drivers and apps are disabled for a fast build.
+      5. Builds + installs GDAL to windows-deps\gdal\
+      6. Copies dependency DLLs into windows-deps\gdal\bin\ so one PATH
+         entry covers everything at runtime
 
-    After this script finishes, open a new terminal and run:
-      cmake --preset windows-vcpkg
-      cmake --build build --preset windows-vcpkg-release
+    After this script finishes (~20-40 min first time), open a NEW terminal and:
+      cmake --preset windows-local
+      cmake --build build --preset windows-local-release
 
 .PARAMETER VcpkgRoot
-    Where to install vcpkg. Defaults to C:\vcpkg.
+    Ignored — kept for backward compat if called with -VcpkgRoot.
 #>
-param(
-    [string]$VcpkgRoot = "C:\vcpkg"
-)
+param([string]$VcpkgRoot)
 
 $ErrorActionPreference = "Stop"
+$RepoRoot = $PSScriptRoot
+$WinDeps  = "$RepoRoot\windows-deps"
+$DevKitZip = "$WinDeps\devkit.zip"
+$SdkRoot  = "$WinDeps\sdk"
+$GdalSrc  = "$RepoRoot\gdal-3.12.2"
+$GdalBld  = "$WinDeps\gdal-build"
+$GdalInst = "$WinDeps\gdal"
 
-# -- 1. Clone vcpkg if not already present ------------------------------------
-if (-not (Test-Path "$VcpkgRoot\.git")) {
-    Write-Host "Cloning vcpkg to $VcpkgRoot ..."
-    git clone https://github.com/microsoft/vcpkg.git $VcpkgRoot
-} else {
-    Write-Host "vcpkg repo already present at $VcpkgRoot"
+# ---------------------------------------------------------------------------
+# 0. Sanity checks
+# ---------------------------------------------------------------------------
+if (-not (Test-Path "$RepoRoot\CMakeLists.txt")) {
+    throw "Run this script from the repo root (the directory containing CMakeLists.txt)."
+}
+if (-not (Test-Path $GdalSrc)) {
+    throw "GDAL source not found at $GdalSrc.  Ensure gdal-3.12.2\ is present."
 }
 
-# -- 2. Download vcpkg.exe via Invoke-WebRequest ------------------------------
-# The standard bootstrap-vcpkg.bat uses tls12-download.exe which can be
-# blocked by corporate group policy. We replicate what it does using only
-# built-in PowerShell cmdlets, which are not subject to that restriction.
-
-if (-not (Test-Path "$VcpkgRoot\vcpkg.exe")) {
-    # Read the pinned tool version from the repo metadata
-    $metadataFile = "$VcpkgRoot\scripts\vcpkg-tool-metadata.txt"
-    if (-not (Test-Path $metadataFile)) {
-        throw "Cannot find $metadataFile - the vcpkg clone may be incomplete."
+# ---------------------------------------------------------------------------
+# 1. Initialise MSVC x64 developer environment
+#    (uses vswhere.exe from C:\Program Files (x86)\... — a trusted system path)
+# ---------------------------------------------------------------------------
+if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+    Write-Host "Initialising MSVC x64 environment ..."
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        throw "vswhere.exe not found.  Install Visual Studio 2022 with C++ tools."
     }
-
-    $versionDate = $null
-    foreach ($line in Get-Content $metadataFile) {
-        if ($line -match "^VCPKG_TOOL_RELEASE_TAG=(.+)$") {
-            $versionDate = $Matches[1].Trim()
-            break
+    $vsPath = & $vswhere -latest -products * `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath
+    if (-not $vsPath) {
+        throw "Visual Studio 2022 with C++ build tools not found."
+    }
+    $vcvars = "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
+    if (-not (Test-Path $vcvars)) {
+        throw "vcvars64.bat not found at $vcvars"
+    }
+    # Import the VS developer environment into this PowerShell session
+    $envLines = cmd /c "`"$vcvars`" >NUL 2>&1 && set"
+    foreach ($line in $envLines) {
+        if ($line -match "^([^=]+)=(.*)$") {
+            [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], "Process")
         }
-        # Older metadata files just have the tag on the first non-comment line
-        if ($line -notmatch "^#" -and $line.Trim() -ne "") {
-            $versionDate = $line.Trim()
-            break
-        }
     }
-
-    if (-not $versionDate) {
-        throw "Could not parse vcpkg tool version from $metadataFile"
-    }
-
-    $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq "Arm64") { "vcpkg-arm64.exe" } else { "vcpkg.exe" }
-    $url = "https://github.com/microsoft/vcpkg-tool/releases/download/$versionDate/$arch"
-
-    Write-Host "Downloading vcpkg.exe ($versionDate) ..."
-    Invoke-WebRequest -Uri $url -OutFile "$VcpkgRoot\vcpkg.exe" -UseBasicParsing
-    Write-Host "vcpkg.exe downloaded successfully."
+    Write-Host "MSVC environment ready."
 } else {
-    Write-Host "vcpkg.exe already present."
+    Write-Host "cl.exe already in PATH — skipping VS environment init."
 }
 
-# -- 3. Unblock vcpkg.exe -----------------------------------------------------
-# Files downloaded from the internet carry a Zone.Identifier alternate data
-# stream that causes Windows SmartScreen / Defender to prompt or block them.
-# Unblock-File removes that mark so vcpkg.exe runs without interruption.
-Unblock-File "$VcpkgRoot\vcpkg.exe"
+# Verify cmake is available
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    throw "cmake.exe not found.  Add cmake to PATH or install it via Visual Studio."
+}
 
-# -- 4. Smoke-test vcpkg.exe --------------------------------------------------
-Write-Host "Verifying vcpkg.exe ..."
-$vcpkgOut = & "$VcpkgRoot\vcpkg.exe" version 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Error @"
-vcpkg.exe failed to run (exit code $LASTEXITCODE):
-  $vcpkgOut
+New-Item -ItemType Directory -Force -Path $WinDeps | Out-Null
 
-Possible cause: a group policy or AppLocker rule is blocking executables
-from $VcpkgRoot.  Try re-running with a different -VcpkgRoot, e.g.:
-  .\bootstrap-windows.ps1 -VcpkgRoot "$env:LOCALAPPDATA\vcpkg"
+# ---------------------------------------------------------------------------
+# 2. Download the GISInternals dependency kit
+#    URL: pre-built MSVC 2022 x64 binaries for all GDAL external deps.
+#    This is a ZIP file — Invoke-WebRequest is a PS built-in, not an exe.
+# ---------------------------------------------------------------------------
+$DevKitUrl = "https://download.gisinternals.com/sdk/downloads/release-1944-x64-dev.zip"
+
+if (-not (Test-Path $SdkRoot)) {
+    Write-Host ""
+    Write-Host "Downloading GISInternals dependency kit (~50 MB) ..."
+    Write-Host "  $DevKitUrl"
+    try {
+        Invoke-WebRequest -Uri $DevKitUrl -OutFile $DevKitZip -UseBasicParsing
+    } catch {
+        throw @"
+Download failed: $_
+
+If you are behind a proxy, configure it first:
+  [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebWebProxy('http://proxy:port')
+  [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+
+Alternatively, download $DevKitUrl manually and place the file at:
+  $DevKitZip
+Then re-run this script.
 "@
-    exit 1
+    }
+
+    Write-Host "Extracting dependency kit ..."
+    $tmpDir = "$WinDeps\sdk-raw"
+    Expand-Archive -Path $DevKitZip -DestinationPath $tmpDir -Force
+
+    # GISInternals zips sometimes have a single top-level subdir, sometimes flat
+    $items = Get-ChildItem $tmpDir
+    if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+        Move-Item $items[0].FullName $SdkRoot
+        Remove-Item $tmpDir
+    } else {
+        Rename-Item $tmpDir $SdkRoot
+    }
+    Remove-Item $DevKitZip -ErrorAction SilentlyContinue
+    Write-Host "Dependency kit extracted to $SdkRoot"
+} else {
+    Write-Host "Dependency kit already present at $SdkRoot"
 }
-Write-Host ($vcpkgOut | Select-Object -First 1)
 
-# -- 5. Pre-install all vcpkg dependencies ------------------------------------
-# Running "vcpkg install" here (in manifest mode, reading vcpkg.json) populates
-# the installed/ tree before cmake is invoked.  This gives visible progress
-# output and catches download/build errors before cmake --preset runs.
-Write-Host ""
-Write-Host "Installing dependencies from vcpkg.json (GDAL + HDF5 + PROJ ...)."
-Write-Host "First run takes ~10-20 minutes; subsequent runs are instant."
-Write-Host ""
-Push-Location $PSScriptRoot
-& "$VcpkgRoot\vcpkg.exe" install --triplet x64-windows --no-print-usage
-if ($LASTEXITCODE -ne 0) {
-    Pop-Location
-    Write-Error "vcpkg install failed (exit code $LASTEXITCODE). See output above."
-    exit 1
+# ---------------------------------------------------------------------------
+# 3. Build GDAL from repo source
+# ---------------------------------------------------------------------------
+if (Test-Path "$GdalInst\include\gdal.h") {
+    Write-Host ""
+    Write-Host "GDAL already built at $GdalInst — skipping build."
+} else {
+    Write-Host ""
+    Write-Host "Configuring GDAL (minimal build: HDF5/BAG + GeoTIFF only) ..."
+    Write-Host "  Source : $GdalSrc"
+    Write-Host "  Build  : $GdalBld"
+    Write-Host "  Install: $GdalInst"
+    Write-Host ""
+
+    $cmakeArgs = @(
+        "-S", $GdalSrc,
+        "-B", $GdalBld,
+        "-G", "Visual Studio 17 2022",
+        "-A", "x64",
+        "-DCMAKE_INSTALL_PREFIX=$GdalInst",
+        "-DCMAKE_PREFIX_PATH=$SdkRoot",
+        # PROJ search hints (FindPROJ.cmake uses PROJ_ROOT)
+        "-DPROJ_ROOT=$SdkRoot",
+        # HDF5 search hints (cmake FindHDF5 uses HDF5_ROOT)
+        "-DHDF5_ROOT=$SdkRoot",
+        # Build as shared library (DLL)
+        "-DBUILD_SHARED_LIBS=ON",
+        # Minimal driver set: HDF5/BAG + GeoTIFF; everything else OFF
+        "-DGDAL_BUILD_OPTIONAL_DRIVERS=OFF",
+        "-DOGR_BUILD_OPTIONAL_DRIVERS=OFF",
+        "-DGDAL_ENABLE_DRIVER_HDF5=ON",
+        "-DGDAL_ENABLE_DRIVER_GTIFF=ON",
+        # Skip apps and tests — they add build time and aren't needed here
+        "-DBUILD_APPS=OFF",
+        "-DBUILD_TESTING=OFF"
+    )
+
+    cmake @cmakeArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "GDAL cmake configure failed (exit $LASTEXITCODE). See output above."
+    }
+
+    Write-Host ""
+    Write-Host "Building GDAL Release (~20-40 min first time) ..."
+    cmake --build $GdalBld --config Release --target install
+    if ($LASTEXITCODE -ne 0) {
+        throw "GDAL build/install failed (exit $LASTEXITCODE). See output above."
+    }
+    Write-Host ""
+    Write-Host "GDAL installed to $GdalInst"
 }
-Pop-Location
-Write-Host ""
-Write-Host "All dependencies installed."
 
-# -- 6. Persist VCPKG_ROOT for the current user -------------------------------
-[System.Environment]::SetEnvironmentVariable("VCPKG_ROOT", $VcpkgRoot, "User")
-$env:VCPKG_ROOT = $VcpkgRoot
-Write-Host "VCPKG_ROOT set to $VcpkgRoot (user environment, permanent)"
+# ---------------------------------------------------------------------------
+# 4. Copy dependency DLLs into windows-deps\gdal\bin\
+#    So a single PATH entry covers GDAL + all its runtime dependencies.
+# ---------------------------------------------------------------------------
+$gdalBin = "$GdalInst\bin"
+New-Item -ItemType Directory -Force -Path $gdalBin | Out-Null
 
-# -- 7. Print next steps ------------------------------------------------------
+$sdkBin = "$SdkRoot\bin"
+if (Test-Path $sdkBin) {
+    Write-Host "Copying dependency DLLs from SDK to $gdalBin ..."
+    Get-ChildItem "$sdkBin\*.dll" | ForEach-Object {
+        Copy-Item $_.FullName $gdalBin -Force
+    }
+} else {
+    Write-Warning "No bin\ directory found in SDK at $sdkBin — DLLs may be missing at runtime."
+}
+
+# ---------------------------------------------------------------------------
+# 5. Done
+# ---------------------------------------------------------------------------
 Write-Host ""
-Write-Host "Setup complete. Open a NEW terminal (so VCPKG_ROOT is visible) and run:"
+Write-Host "============================================================"
+Write-Host " Setup complete!"
+Write-Host "============================================================"
 Write-Host ""
-Write-Host "  cmake --preset windows-vcpkg"
-Write-Host "  cmake --build build --preset windows-vcpkg-release"
+Write-Host "Open a NEW terminal and build with:"
 Write-Host ""
-Write-Host "If cmake was previously run and failed, delete the build/ directory first:"
+Write-Host "  cmake --preset windows-local"
+Write-Host "  cmake --build build --preset windows-local-release"
+Write-Host ""
+Write-Host "If cmake was previously run and failed, delete build\ first:"
 Write-Host "  Remove-Item -Recurse -Force build"
 Write-Host ""
-Write-Host "To run the test executable afterwards:"
-Write-Host "  set GDAL_DATA=$VcpkgRoot\installed\x64-windows\share\gdal"
+Write-Host "To run the test executable:"
+Write-Host "  `$env:PATH += `";$gdalBin`""
+Write-Host "  `$env:GDAL_DATA = `"$GdalInst\share\gdal`""
 Write-Host "  build\Release\test_bathymetry.exe"

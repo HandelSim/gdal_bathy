@@ -1,6 +1,7 @@
 build/
 gdal-*/
 gdal-build/
+windows-deps/
 *.o
 *.obj
 *.pyc

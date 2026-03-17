@@ -3,9 +3,17 @@
   "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
   "configurePresets": [
     {
+      "name": "windows-local",
+      "displayName": "Windows x64 MSVC (local deps)",
+      "description": "Visual Studio 17 2022, x64. Run bootstrap-windows.ps1 first to build deps into windows-deps/.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "binaryDir": "${sourceDir}/build"
+    },
+    {
       "name": "windows-vcpkg",
       "displayName": "Windows x64 MSVC + vcpkg",
-      "description": "Visual Studio 17 2022, x64, all deps via vcpkg",
+      "description": "Visual Studio 17 2022, x64, all deps via vcpkg. Requires VCPKG_ROOT env var.",
       "generator": "Visual Studio 17 2022",
       "architecture": { "value": "x64", "strategy": "set" },
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
@@ -23,8 +31,14 @@
   ],
   "buildPresets": [
     {
+      "name": "windows-local-release",
+      "displayName": "Windows Release (local deps)",
+      "configurePreset": "windows-local",
+      "configuration": "Release"
+    },
+    {
       "name": "windows-vcpkg-release",
-      "displayName": "Windows Release",
+      "displayName": "Windows Release (vcpkg)",
       "configurePreset": "windows-vcpkg",
       "configuration": "Release"
     },
