@@ -572,7 +572,12 @@ int main() {
     };
     for (int i = 0; gdal_data_candidates[i]; ++i) {
         if (std::filesystem::exists(gdal_data_candidates[i])) {
+#ifdef _WIN32
+            if (!getenv("GDAL_DATA"))
+                _putenv_s("GDAL_DATA", gdal_data_candidates[i]);
+#else
             setenv("GDAL_DATA", gdal_data_candidates[i], 0);
+#endif
             break;
         }
     }
