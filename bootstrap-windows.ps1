@@ -180,12 +180,25 @@ function Find-SdkLib([string]$Root, [string[]]$Names) {
     }
     return $null
 }
+# Wildcard variant - for versioned lib names like proj_9_5.lib
+function Find-SdkLibWild([string]$Root, [string]$Pattern, [string[]]$Excludes = @()) {
+    Get-ChildItem -Path $Root -Recurse -Filter $Pattern -ErrorAction SilentlyContinue |
+        Where-Object { $name = $_.Name; ($Excludes | Where-Object { $name -like $_ }).Count -eq 0 } |
+        Sort-Object Name |
+        Select-Object -First 1 -ExpandProperty FullName
+}
 
 Write-Host ""
 Write-Host "Probing SDK for dependency paths ..."
 
-$ProjIncDir  = Find-SdkHeader $SdkRoot "proj.h"
-$ProjLib     = Find-SdkLib   $SdkRoot @("proj_i.lib","proj.lib")
+$ProjIncDir  = Find-SdkHeader  $SdkRoot "proj.h"
+# GISInternals names the PROJ lib with a version suffix (e.g. proj_9_5.lib).
+# Try canonical names first, then fall back to any proj*.lib.
+$ProjLib     = Find-SdkLib     $SdkRoot @("proj_i.lib","proj.lib")
+if (-not $ProjLib) {
+    $ProjLib = Find-SdkLibWild $SdkRoot "proj*.lib" @("*_test*","*_util*","*_grids*")
+    if ($ProjLib) { Write-Host "  (PROJ lib found via wildcard: $(Split-Path $ProjLib -Leaf))" }
+}
 $ZlibIncDir  = Find-SdkHeader $SdkRoot "zlib.h"
 $ZlibLib     = Find-SdkLib   $SdkRoot @("zlib_i.lib","zlib.lib","zlibstatic.lib")
 $Hdf5IncDir  = Find-SdkHeader $SdkRoot "hdf5.h"
