@@ -29,13 +29,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ── 1. Clone vcpkg if not already present ──────────────────────────────────
+# -- 1. Clone vcpkg if not already present ------------------------------------
 if (-not (Test-Path "$VcpkgRoot\vcpkg.exe")) {
     if (-not (Test-Path $VcpkgRoot)) {
         Write-Host "Cloning vcpkg to $VcpkgRoot ..."
         git clone https://github.com/microsoft/vcpkg.git $VcpkgRoot
     } else {
-        Write-Host "vcpkg directory exists but vcpkg.exe is missing — bootstrapping ..."
+        Write-Host "vcpkg directory exists but vcpkg.exe is missing - bootstrapping ..."
     }
     Write-Host "Bootstrapping vcpkg ..."
     & "$VcpkgRoot\bootstrap-vcpkg.bat" -disableMetrics
@@ -43,12 +43,12 @@ if (-not (Test-Path "$VcpkgRoot\vcpkg.exe")) {
     Write-Host "vcpkg already present at $VcpkgRoot"
 }
 
-# ── 2. Persist VCPKG_ROOT for the current user ─────────────────────────────
+# -- 2. Persist VCPKG_ROOT for the current user -------------------------------
 [System.Environment]::SetEnvironmentVariable("VCPKG_ROOT", $VcpkgRoot, "User")
 $env:VCPKG_ROOT = $VcpkgRoot
 Write-Host "VCPKG_ROOT set to $VcpkgRoot (user environment, permanent)"
 
-# ── 3. Print next steps ────────────────────────────────────────────────────
+# -- 3. Print next steps ------------------------------------------------------
 Write-Host ""
 Write-Host "Setup complete. Open a NEW terminal (so VCPKG_ROOT is visible) and run:"
 Write-Host ""
@@ -56,7 +56,7 @@ Write-Host "  cmake --preset windows-vcpkg"
 Write-Host "  cmake --build build --preset windows-vcpkg-release"
 Write-Host ""
 Write-Host "The first cmake configure will download and build all dependencies"
-Write-Host "(GDAL, HDF5, PROJ, ...) automatically via vcpkg — this takes ~10-20 min."
+Write-Host "(GDAL, HDF5, PROJ, ...) automatically via vcpkg - this takes ~10-20 min."
 Write-Host "Subsequent builds are instant (packages are cached in vcpkg)."
 Write-Host ""
 Write-Host "To run the test executable afterwards:"
