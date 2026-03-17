@@ -296,6 +296,11 @@ if (Test-Path "$GdalInst\include\gdal.h") {
         # but GDAL's headers see crc32 as a plain symbol -> LNK2019 on crc32.
         # HDF5.dll carries its own zlib dependency so this does not affect HDF5.
         "-DGDAL_USE_ZLIB_INTERNAL=ON",
+        # Disable the GDAL algorithm framework (gdal raster tile, slope, etc.).
+        # gdalalg_raster_tile.cpp calls crc32() directly from zlib headers but the
+        # internal zlib renames all symbols, so the symbol is unresolvable.
+        # We only need HDF5/BAG + GeoTIFF drivers, not the algorithm framework.
+        "-DGDAL_ENABLE_ALGORITHMS=OFF",
         # Disable muparser: GISInternals ships it as a static lib but GDAL compiles
         # vrtexpression_muparser.obj expecting DLL-import symbols -> LNK2019 mismatch.
         "-DGDAL_USE_MUPARSER=OFF",
