@@ -226,6 +226,25 @@ if (-not $ZlibIncDir -or -not $ZlibLib) {
            "Re-download the dev kit or verify the ZIP structure.")
 }
 
+# Derive the true SDK inner root (the directory that contains include\ and lib\).
+# GISInternals ZIPs sometimes nest one extra level (e.g. sdk\release-1944-x64\).
+# $ZlibIncDir was found by searching recursively; its parent is always the real root.
+$ActualSdkRoot = Split-Path $ZlibIncDir -Parent
+if ($ActualSdkRoot -ne $SdkRoot) {
+    Write-Host "  (Effective SDK root: $ActualSdkRoot)"
+}
+
+# Probe TIFF and GeoTIFF too; if missing, GDAL uses its internal bundled copies.
+$TiffIncDir = Find-SdkHeader $SdkRoot "tiff.h"
+$TiffLib    = Find-SdkLib   $SdkRoot @("libtiff_i.lib","libtiff.lib","tiff_i.lib","tiff.lib")
+$GtiffIncDir = Find-SdkHeader $SdkRoot "geotiff.h"
+$GtiffLib    = Find-SdkLib   $SdkRoot @("geotiff_i.lib","geotiff.lib")
+foreach ($pair in @(@("tiff.h",$TiffIncDir),@("TIFF lib",$TiffLib),
+                    @("geotiff.h",$GtiffIncDir),@("GeoTIFF lib",$GtiffLib))) {
+    if ($pair[1]) { Write-Host "  Found $($pair[0]) : $($pair[1])" }
+    else          { Write-Host "  $($pair[0]) not found - GDAL will use internal copy" }
+}
+
 # ---------------------------------------------------------------------------
 # 3. Build GDAL from repo source
 # ---------------------------------------------------------------------------
@@ -246,15 +265,20 @@ if (Test-Path "$GdalInst\include\gdal.h") {
         "-G", "Visual Studio 17 2022",
         "-A", "x64",
         "-DCMAKE_INSTALL_PREFIX=$GdalInst",
-        "-DCMAKE_PREFIX_PATH=$SdkRoot",
-        # PROJ - explicit paths required; GISInternals SDK has no cmake config files
+        # Point cmake prefix at the real inner SDK root (include\ and lib\ live here)
+        "-DCMAKE_PREFIX_PATH=$ActualSdkRoot",
+        # PROJ - explicit paths; GISInternals has no cmake config files
         "-DPROJ_INCLUDE_DIR=$ProjIncDir",
         "-DPROJ_LIBRARY=$ProjLib",
-        # ZLIB - required by libtiff (GeoTIFF) and HDF5
+        # ZLIB
         "-DZLIB_INCLUDE_DIR=$ZlibIncDir",
         "-DZLIB_LIBRARY=$ZlibLib",
-        # HDF5 - point at the SDK root so FindHDF5 searches there
-        "-DHDF5_ROOT=$SdkRoot",
+        # HDF5 - point FindHDF5 at the real root that contains include\ and lib\
+        "-DHDF5_ROOT=$ActualSdkRoot",
+        "-DHDF5_C_INCLUDE_DIR=$Hdf5IncDir",
+        # TIFF / GeoTIFF - pass explicit paths if found; otherwise GDAL uses bundled copies
+        $(if ($TiffIncDir -and $TiffLib)   { "-DTIFF_INCLUDE_DIR=$TiffIncDir"; "-DTIFF_LIBRARY=$TiffLib" } else { $null }),
+        $(if ($GtiffIncDir -and $GtiffLib) { "-DGEOTIFF_INCLUDE_DIR=$GtiffIncDir"; "-DGEOTIFF_LIBRARY=$GtiffLib" } else { $null }),
         "-DBUILD_SHARED_LIBS=ON",
         "-DGDAL_BUILD_OPTIONAL_DRIVERS=OFF",
         "-DOGR_BUILD_OPTIONAL_DRIVERS=OFF",
