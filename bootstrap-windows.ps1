@@ -278,9 +278,6 @@ if (Test-Path "$GdalInst\include\gdal.h") {
         # PROJ - explicit paths; GISInternals has no cmake config files
         "-DPROJ_INCLUDE_DIR=$ProjIncDir",
         "-DPROJ_LIBRARY=$ProjLib",
-        # ZLIB
-        "-DZLIB_INCLUDE_DIR=$ZlibIncDir",
-        "-DZLIB_LIBRARY=$ZlibLib",
         # HDF5 - point FindHDF5 at the real root that contains include\ and lib\
         "-DHDF5_ROOT=$ActualSdkRoot",
         "-DHDF5_C_INCLUDE_DIR=$Hdf5IncDir",
