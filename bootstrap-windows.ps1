@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
     One-time setup: downloads the GISInternals dependency kit and builds GDAL
-    from the repo's own source tree — no vcpkg, no pre-built executables needed.
+    from the repo's own source tree - no vcpkg, no pre-built executables needed.
 
 .DESCRIPTION
     Designed for corporate environments where group policy blocks downloaded
     executables.  This script uses only:
-      • Invoke-WebRequest / Expand-Archive  (PowerShell built-ins, not exes)
-      • cmake.exe / cl.exe  (trusted Visual Studio tools)
+      - Invoke-WebRequest / Expand-Archive  (PowerShell built-ins, not exes)
+      - cmake.exe / cl.exe  (trusted Visual Studio tools)
 
     What it does:
       1. Locates Visual Studio 2022 and initialises the MSVC x64 environment
       2. Downloads release-1944-x64-dev.zip from gisinternals.com (~50 MB)
          This is a ZIP of pre-compiled MSVC 2022 x64 dependencies:
          SQLite, PROJ, HDF5, libtiff, zlib, curl, etc.
-         (a ZIP file, not an executable — nothing is run from it directly)
+         (a ZIP file, not an executable - nothing is run from it directly)
       3. Extracts the kit to windows-deps\sdk\
       4. Configures GDAL 3.12 (source already in the repo at gdal-3.12.2\)
          with minimal drivers: HDF5 + BAG + GeoTIFF only.  All optional
@@ -28,18 +28,18 @@
       cmake --build build --preset windows-local-release
 
 .PARAMETER VcpkgRoot
-    Ignored — kept for backward compat if called with -VcpkgRoot.
+    Ignored - kept for backward compat if called with -VcpkgRoot.
 #>
 param([string]$VcpkgRoot)
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = $PSScriptRoot
-$WinDeps  = "$RepoRoot\windows-deps"
+$RepoRoot  = $PSScriptRoot
+$WinDeps   = "$RepoRoot\windows-deps"
 $DevKitZip = "$WinDeps\devkit.zip"
-$SdkRoot  = "$WinDeps\sdk"
-$GdalSrc  = "$RepoRoot\gdal-3.12.2"
-$GdalBld  = "$WinDeps\gdal-build"
-$GdalInst = "$WinDeps\gdal"
+$SdkRoot   = "$WinDeps\sdk"
+$GdalSrc   = "$RepoRoot\gdal-3.12.2"
+$GdalBld   = "$WinDeps\gdal-build"
+$GdalInst  = "$WinDeps\gdal"
 
 # ---------------------------------------------------------------------------
 # 0. Sanity checks
@@ -53,7 +53,7 @@ if (-not (Test-Path $GdalSrc)) {
 
 # ---------------------------------------------------------------------------
 # 1. Initialise MSVC x64 developer environment
-#    (uses vswhere.exe from C:\Program Files (x86)\... — a trusted system path)
+#    vswhere.exe lives in C:\Program Files (x86)\... - a trusted system path.
 # ---------------------------------------------------------------------------
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     Write-Host "Initialising MSVC x64 environment ..."
@@ -80,7 +80,7 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     }
     Write-Host "MSVC environment ready."
 } else {
-    Write-Host "cl.exe already in PATH — skipping VS environment init."
+    Write-Host "cl.exe already in PATH - skipping VS environment init."
 }
 
 # Verify cmake is available
@@ -92,8 +92,8 @@ New-Item -ItemType Directory -Force -Path $WinDeps | Out-Null
 
 # ---------------------------------------------------------------------------
 # 2. Download the GISInternals dependency kit
-#    URL: pre-built MSVC 2022 x64 binaries for all GDAL external deps.
-#    This is a ZIP file — Invoke-WebRequest is a PS built-in, not an exe.
+#    Pre-built MSVC 2022 x64 binaries for all GDAL external deps.
+#    Invoke-WebRequest is a PS built-in cmdlet - not a standalone exe.
 # ---------------------------------------------------------------------------
 $DevKitUrl = "https://download.gisinternals.com/sdk/downloads/release-1944-x64-dev.zip"
 
@@ -104,24 +104,26 @@ if (-not (Test-Path $SdkRoot)) {
     try {
         Invoke-WebRequest -Uri $DevKitUrl -OutFile $DevKitZip -UseBasicParsing
     } catch {
-        throw @"
-Download failed: $_
-
-If you are behind a proxy, configure it first:
-  [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebWebProxy('http://proxy:port')
-  [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-
-Alternatively, download $DevKitUrl manually and place the file at:
-  $DevKitZip
-Then re-run this script.
-"@
+        $msg = @(
+            "Download failed: $_",
+            "",
+            "If you are behind a proxy, configure it first:",
+            "  [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy('http://proxy:port')",
+            "  [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials",
+            "",
+            "Alternatively, download the file manually and place it at:",
+            "  $DevKitZip",
+            "URL: $DevKitUrl",
+            "Then re-run this script."
+        )
+        throw ($msg -join "`n")
     }
 
     Write-Host "Extracting dependency kit ..."
     $tmpDir = "$WinDeps\sdk-raw"
     Expand-Archive -Path $DevKitZip -DestinationPath $tmpDir -Force
 
-    # GISInternals zips sometimes have a single top-level subdir, sometimes flat
+    # Handle both flat ZIPs and ZIPs with a single top-level subdirectory
     $items = Get-ChildItem $tmpDir
     if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
         Move-Item $items[0].FullName $SdkRoot
@@ -140,7 +142,7 @@ Then re-run this script.
 # ---------------------------------------------------------------------------
 if (Test-Path "$GdalInst\include\gdal.h") {
     Write-Host ""
-    Write-Host "GDAL already built at $GdalInst — skipping build."
+    Write-Host "GDAL already built at $GdalInst - skipping build."
 } else {
     Write-Host ""
     Write-Host "Configuring GDAL (minimal build: HDF5/BAG + GeoTIFF only) ..."
@@ -156,18 +158,13 @@ if (Test-Path "$GdalInst\include\gdal.h") {
         "-A", "x64",
         "-DCMAKE_INSTALL_PREFIX=$GdalInst",
         "-DCMAKE_PREFIX_PATH=$SdkRoot",
-        # PROJ search hints (FindPROJ.cmake uses PROJ_ROOT)
         "-DPROJ_ROOT=$SdkRoot",
-        # HDF5 search hints (cmake FindHDF5 uses HDF5_ROOT)
         "-DHDF5_ROOT=$SdkRoot",
-        # Build as shared library (DLL)
         "-DBUILD_SHARED_LIBS=ON",
-        # Minimal driver set: HDF5/BAG + GeoTIFF; everything else OFF
         "-DGDAL_BUILD_OPTIONAL_DRIVERS=OFF",
         "-DOGR_BUILD_OPTIONAL_DRIVERS=OFF",
         "-DGDAL_ENABLE_DRIVER_HDF5=ON",
         "-DGDAL_ENABLE_DRIVER_GTIFF=ON",
-        # Skip apps and tests — they add build time and aren't needed here
         "-DBUILD_APPS=OFF",
         "-DBUILD_TESTING=OFF"
     )
@@ -189,7 +186,7 @@ if (Test-Path "$GdalInst\include\gdal.h") {
 
 # ---------------------------------------------------------------------------
 # 4. Copy dependency DLLs into windows-deps\gdal\bin\
-#    So a single PATH entry covers GDAL + all its runtime dependencies.
+#    A single PATH entry then covers GDAL and all its runtime dependencies.
 # ---------------------------------------------------------------------------
 $gdalBin = "$GdalInst\bin"
 New-Item -ItemType Directory -Force -Path $gdalBin | Out-Null
@@ -201,7 +198,7 @@ if (Test-Path $sdkBin) {
         Copy-Item $_.FullName $gdalBin -Force
     }
 } else {
-    Write-Warning "No bin\ directory found in SDK at $sdkBin — DLLs may be missing at runtime."
+    Write-Warning "No bin\ directory in SDK at $sdkBin - DLLs may be missing at runtime."
 }
 
 # ---------------------------------------------------------------------------
