@@ -63,7 +63,8 @@ static Format detectFormat(const std::filesystem::path& path) {
         magic[4]==0x0D && magic[5]==0x0A && magic[6]==0x1A && magic[7]==0x0A) {
         // Could be HDF5/BAG — use extension to disambiguate
         auto ext = path.extension().string();
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return (char)::tolower(c); });
         if (ext == ".bag") return Format::BAG;
         // Other HDF5-based formats fall through to GeoTIFF (they won't be)
         return Format::BAG; // default HDF5 to BAG for our purposes
@@ -311,7 +312,7 @@ static void validateRasterMatch(GDALDataset* src, GDALDataset* dst,
 // ---------------------------------------------------------------------------
 static void gsfToGeoTiff(const std::filesystem::path& input,
                           const std::filesystem::path& output,
-                          const ConvertOptions& opts) {
+                          const ConvertOptions& /*opts*/) {
     ensureGdalInit();
 
     int handle = -1;
@@ -485,7 +486,7 @@ static void rasterToGsf(const std::filesystem::path& input,
 
         rec.mb_ping.latitude  = gt[3] + (r + 0.5) * gt[5];
         rec.mb_ping.longitude = gt[0] + (cols * 0.5) * gt[1];
-        rec.mb_ping.number_beams = cols;
+        rec.mb_ping.number_beams = static_cast<short>(cols);
         rec.mb_ping.depth       = depths.data();
         rec.mb_ping.across_track= across.data();
 
