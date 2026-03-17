@@ -11,10 +11,8 @@ if(MSVC)
     _CRT_NONSTDC_NO_WARNINGS
     fseeko=_fseeki64
     ftello=_ftelli64
-    # Windows 10 SDK (10.0.22000+) defines timespec in time.h.
-    # HAVE_STRUCT_TIMESPEC is in gsf.h's guard list and skips its own definition.
-    HAVE_STRUCT_TIMESPEC
     # F_OK (POSIX file-existence flag) is not defined in MSVC headers; it equals 0.
+    # (_CRT_NONSTDC_NO_WARNINGS allows access() via <io.h> on MSVC.)
     F_OK=0)
 else()
   # ftello64 / fseeko64 are GNU extensions

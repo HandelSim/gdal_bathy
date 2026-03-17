@@ -418,7 +418,11 @@ gsfDataID;
 
 /* Define Posix.4 proposed structure for internal storage of time */
 /* timespec is defined in __MINGW64__ but it appears that they don't set a macro for it.  JCD */
-#if (!defined (_STRUCT_TIMESPEC_) && \
+#ifdef _MSC_VER
+/* MSVC: struct timespec is provided by <time.h> since Windows SDK 10.0.14393 (RS1).    */
+/* Include it here so all consumers of gsf.h get the type without a redefinition error. */
+# include <time.h>
+#elif (!defined (_STRUCT_TIMESPEC_) && \
      !defined (_TIMESPEC_T) && \
      !defined (_STRUCT_TIMESPEC) && \
      !defined (_SYS_TIMESPEC_H) && \
