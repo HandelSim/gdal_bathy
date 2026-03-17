@@ -54,58 +54,39 @@ GDAL_DATA=deps/gdal/share/gdal \
 
 ## Windows MSVC Build
 
-> **Run all commands in `cmd.exe` or PowerShell, not Git Bash.**
-> The `^` line-continuation character is CMD syntax; use `` ` `` in PowerShell.
+Dependencies (GDAL, HDF5, PROJ, ...) are fetched automatically via **vcpkg**.
+You need Git and Visual Studio 2022 with the C++ workload installed.
 
-### Step 1 — Get pre-built Windows dependencies
+### Step 1 — One-time bootstrap (PowerShell)
 
-The `windows-deps/` subdirectory contains `README.txt` files for each library
-explaining where to download binaries.  Follow them in order:
+Run from the repository root in any PowerShell window:
 
-| Directory | What's needed |
-|-----------|---------------|
-| `windows-deps/gdal/` | `gdal_i.lib` + DLLs + headers (see `README.txt`) |
-| `windows-deps/hdf5/` | HDF5 1.14.6 MSVC binaries (see `README.txt`) |
-| `windows-deps/proj/` | PROJ 9.x MSVC binaries (see `README.txt`) |
-
-The fastest path is **vcpkg** — it handles GDAL and all its transitive
-dependencies in one command:
-
-```bat
-vcpkg install gdal:x64-windows
+```powershell
+.\bootstrap-windows.ps1
 ```
 
-Then pass the vcpkg toolchain file to CMake (Step 2 below).
+This clones vcpkg to `C:\vcpkg`, builds the `vcpkg.exe` binary, and saves
+`VCPKG_ROOT` as a permanent user environment variable.
+It takes about a minute and only needs to be done once per machine.
 
 ### Step 2 — Configure and build
 
-**Option A — vcpkg (recommended)**
+Open a **new** terminal (so `VCPKG_ROOT` is visible) and run:
 
-```bat
-cmake -S . -B build ^
-  -G "Visual Studio 17 2022" -A x64 ^
-  -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
-
-cmake --build build --config Release
+```powershell
+cmake --preset windows-vcpkg
+cmake --build build --preset windows-vcpkg-release
 ```
 
-**Option B — manually placed binaries in `windows-deps/`**
+On the first configure, vcpkg downloads and compiles GDAL plus all its
+transitive dependencies (HDF5, PROJ, etc.). This takes **~10–20 minutes**
+the first time; subsequent builds are instant because packages are cached.
+
+### Step 3 — Run the test executable
 
 ```bat
-cmake -S . -B build ^
-  -G "Visual Studio 17 2022" -A x64 ^
-  -DGDAL_ROOT="%CD%\windows-deps\gdal" ^
-  -DHDF5_ROOT="%CD%\windows-deps\hdf5" ^
-  -DPROJ_ROOT="%CD%\windows-deps\proj"
-
-cmake --build build --config Release
-```
-
-### Step 3 — Set PATH before running the executable
-
-```bat
-set PATH=%CD%\windows-deps\gdal\bin;%CD%\windows-deps\hdf5\bin;%CD%\windows-deps\proj\bin;%PATH%
-set GDAL_DATA=%CD%\deps\gdal\share\gdal
+set GDAL_DATA=C:\vcpkg\installed\x64-windows\share\gdal
+build\Release\test_bathymetry.exe
 ```
 
 ## BAG Test File Coverage
@@ -142,8 +123,8 @@ Real BAG files sourced from [GDAL autotest suite](https://github.com/OSGeo/gdal)
 |---------|---------|--------|
 | GDAL    | 3.12.2  | https://gdal.org (built from source, BAG+GTiff+XYZ only) |
 | GSF     | 03.11   | https://leidos.com (Leidos Generic Sensor Format) |
-| HDF5    | 1.10.x (Linux) / 1.14.6 (Windows) | https://www.hdfgroup.org/ |
-| PROJ    | 9.4.x (Linux) / 9.x (Windows) | https://proj.org / OSGeo4W |
+| HDF5    | 1.10.x (Linux) / latest via vcpkg (Windows) | https://www.hdfgroup.org/ |
+| PROJ    | 9.4.x (Linux) / latest via vcpkg (Windows) | https://proj.org |
 
 ## Repository Structure
 
@@ -151,6 +132,9 @@ Real BAG files sourced from [GDAL autotest suite](https://github.com/OSGeo/gdal)
 bathymetry.h          <- public C++17 header (no GDAL/GSF types exposed)
 bathymetry.cpp        <- implementation
 CMakeLists.txt
+CMakePresets.json     <- build presets (windows-vcpkg, linux-release)
+vcpkg.json            <- vcpkg dependency manifest (Windows)
+bootstrap-windows.ps1 <- one-time Windows setup script
 README.md
 .gitignore
 test/

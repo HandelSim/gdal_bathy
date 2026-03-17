@@ -1,0 +1,7 @@
+{
+  "name": "bathymetry",
+  "version": "1.0",
+  "dependencies": [
+    "gdal"
+  ]
+}
