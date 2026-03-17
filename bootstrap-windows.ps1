@@ -252,6 +252,14 @@ if (Test-Path "$GdalInst\include\gdal.h") {
     Write-Host ""
     Write-Host "GDAL already built at $GdalInst - skipping build."
 } else {
+    # Clean a stale build directory (previous run failed mid-way).
+    # A fresh configure is needed whenever cmake args change.
+    if (Test-Path $GdalBld) {
+        Write-Host ""
+        Write-Host "Removing stale build directory: $GdalBld"
+        Remove-Item -Recurse -Force $GdalBld
+    }
+
     Write-Host ""
     Write-Host "Configuring GDAL (minimal build: HDF5/BAG + GeoTIFF only) ..."
     Write-Host "  Source : $GdalSrc"
@@ -285,7 +293,17 @@ if (Test-Path "$GdalInst\include\gdal.h") {
         "-DGDAL_ENABLE_DRIVER_HDF5=ON",
         "-DGDAL_ENABLE_DRIVER_GTIFF=ON",
         "-DBUILD_APPS=OFF",
-        "-DBUILD_TESTING=OFF"
+        "-DBUILD_TESTING=OFF",
+        # Use GDAL's bundled static zlib instead of the GISInternals DLL import lib.
+        # The GISInternals zlib.lib is an import lib (expects zlib1.dll at link time)
+        # but GDAL's headers see crc32 as a plain symbol -> LNK2019 on crc32.
+        # HDF5.dll carries its own zlib dependency so this does not affect HDF5.
+        "-DGDAL_USE_ZLIB_INTERNAL=ON",
+        # Disable muparser: GISInternals ships it as a static lib but GDAL compiles
+        # vrtexpression_muparser.obj expecting DLL-import symbols -> LNK2019 mismatch.
+        "-DGDAL_USE_MUPARSER=OFF",
+        # Disable WebP: newer libwebp splits SharpYuv into a separate lib not in SDK.
+        "-DGDAL_USE_WEBP=OFF"
     )
 
     cmake @cmakeArgs
