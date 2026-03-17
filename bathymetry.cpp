@@ -82,7 +82,8 @@ static Format detectFormat(const std::filesystem::path& path) {
 
     // Extension fallback
     auto ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return (char)::tolower(c); });
 
     if (ext == ".bag")  return Format::BAG;
     if (ext == ".tif" || ext == ".tiff") return Format::GeoTIFF;
