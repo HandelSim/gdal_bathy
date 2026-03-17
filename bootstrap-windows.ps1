@@ -162,6 +162,58 @@ if (-not (Test-Path $SdkRoot)) {
 }
 
 # ---------------------------------------------------------------------------
+# 2b. Probe the SDK to find exact paths for required dependencies.
+#     The GISInternals dev kit is a flat (non-cmake) SDK; FindPROJ.cmake and
+#     FindZLIB.cmake need explicit paths or they fail even with PREFIX_PATH.
+# ---------------------------------------------------------------------------
+function Find-SdkHeader([string]$Root, [string]$Name) {
+    $hit = Get-ChildItem -Path $Root -Recurse -Filter $Name -ErrorAction SilentlyContinue |
+           Select-Object -First 1
+    if ($hit) { return $hit.Directory.FullName }
+    return $null
+}
+function Find-SdkLib([string]$Root, [string[]]$Names) {
+    foreach ($n in $Names) {
+        $hit = Get-ChildItem -Path $Root -Recurse -Filter $n -ErrorAction SilentlyContinue |
+               Select-Object -First 1
+        if ($hit) { return $hit.FullName }
+    }
+    return $null
+}
+
+Write-Host ""
+Write-Host "Probing SDK for dependency paths ..."
+
+$ProjIncDir  = Find-SdkHeader $SdkRoot "proj.h"
+$ProjLib     = Find-SdkLib   $SdkRoot @("proj_i.lib","proj.lib")
+$ZlibIncDir  = Find-SdkHeader $SdkRoot "zlib.h"
+$ZlibLib     = Find-SdkLib   $SdkRoot @("zlib_i.lib","zlib.lib","zlibstatic.lib")
+$Hdf5IncDir  = Find-SdkHeader $SdkRoot "hdf5.h"
+$Hdf5Lib     = Find-SdkLib   $SdkRoot @("hdf5_i.lib","hdf5.lib","libhdf5.lib")
+
+# Diagnostics - shown so failures are easy to interpret
+foreach ($pair in @(
+    @("proj.h",  $ProjIncDir),  @("PROJ lib", $ProjLib),
+    @("zlib.h",  $ZlibIncDir),  @("ZLIB lib", $ZlibLib),
+    @("hdf5.h",  $Hdf5IncDir),  @("HDF5 lib", $Hdf5Lib)
+)) {
+    $label = $pair[0]; $val = $pair[1]
+    if ($val) { Write-Host "  Found $label : $val" }
+    else      { Write-Warning "  $label NOT found in $SdkRoot" }
+}
+
+if (-not $ProjIncDir -or -not $ProjLib) {
+    throw ("PROJ not found in SDK at $SdkRoot.`n" +
+           "Expected proj.h under $SdkRoot\include and proj_i.lib under $SdkRoot\lib.`n" +
+           "Re-download the dev kit or verify the ZIP structure.")
+}
+if (-not $ZlibIncDir -or -not $ZlibLib) {
+    throw ("ZLIB not found in SDK at $SdkRoot.`n" +
+           "Expected zlib.h and zlib_i.lib.`n" +
+           "Re-download the dev kit or verify the ZIP structure.")
+}
+
+# ---------------------------------------------------------------------------
 # 3. Build GDAL from repo source
 # ---------------------------------------------------------------------------
 if (Test-Path "$GdalInst\include\gdal.h") {
@@ -182,7 +234,13 @@ if (Test-Path "$GdalInst\include\gdal.h") {
         "-A", "x64",
         "-DCMAKE_INSTALL_PREFIX=$GdalInst",
         "-DCMAKE_PREFIX_PATH=$SdkRoot",
-        "-DPROJ_ROOT=$SdkRoot",
+        # PROJ - explicit paths required; GISInternals SDK has no cmake config files
+        "-DPROJ_INCLUDE_DIR=$ProjIncDir",
+        "-DPROJ_LIBRARY=$ProjLib",
+        # ZLIB - required by libtiff (GeoTIFF) and HDF5
+        "-DZLIB_INCLUDE_DIR=$ZlibIncDir",
+        "-DZLIB_LIBRARY=$ZlibLib",
+        # HDF5 - point at the SDK root so FindHDF5 searches there
         "-DHDF5_ROOT=$SdkRoot",
         "-DBUILD_SHARED_LIBS=ON",
         "-DGDAL_BUILD_OPTIONAL_DRIVERS=OFF",
