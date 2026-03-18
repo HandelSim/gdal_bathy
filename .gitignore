@@ -1,4 +1,5 @@
 build/
+build-*/
 gdal-*/
 gdal-build/
 windows-deps/
@@ -9,3 +10,9 @@ __pycache__/
 *.tar.gz
 *.zip
 /tmp/
+test_stdout.txt
+test_stderr.txt
+test_exitcode.txt
+test_output.txt
+stdout.txt
+stderr.txt

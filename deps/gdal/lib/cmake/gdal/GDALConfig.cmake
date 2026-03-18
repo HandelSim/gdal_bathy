@@ -10,7 +10,6 @@ if(NOT "ON")
     include(CMakeFindDependencyMacro)
 include("${CMAKE_CURRENT_LIST_DIR}/DefineFindPackage2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/GdalFindModulePath.cmake")
-find_dependency(Threads)
 
     if(DEFINED _gdal_module_path_backup)
         set(CMAKE_MODULE_PATH  "${_gdal_module_path_backup}")
