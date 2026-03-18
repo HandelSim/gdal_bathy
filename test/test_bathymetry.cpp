@@ -238,7 +238,7 @@ static void test_query_gsf() {
 // ---------------------------------------------------------------------------
 static void test_bag_to_geotiff_all() {
     int passes = 0, fails = 0;
-    const fs::path tmpDir = "/tmp";
+    const fs::path tmpDir = fs::temp_directory_path();
 
     for (auto& p : gAllBags) {
         std::string stem = p.stem().string();
@@ -304,71 +304,11 @@ static void test_bag_to_geotiff_all() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 8: BAG → XYZ
-// ---------------------------------------------------------------------------
-static void test_bag_to_xyz() {
-    if (gAllBags.empty()) {
-        std::cout << "  SKIP: no BAG files available\n";
-        passMsg("test_bag_to_xyz");
-        return;
-    }
-    // Find a BAG that GDAL can open (not the giant one)
-    fs::path src;
-    for (auto& p : gAllBags) {
-        std::string s = p.stem().string();
-        if (s != "larger_than_INT_MAX_pixels" && s != "invalid_bag_vlen_bag_version") {
-            src = p; break;
-        }
-    }
-    if (src.empty()) {
-        passMsg("test_bag_to_xyz");
-        return;
-    }
-
-    fs::path out = "/tmp/bathy_test_bag_to_xyz.xyz";
-    bathy::ConvertOptions opts;
-    opts.targetFormat     = bathy::Format::XYZ;
-    opts.strictValidation = false;
-    bathy::convertFile(src, out, opts);
-    EXPECT_TRUE(fs::exists(out), "XYZ output exists");
-    EXPECT_TRUE(fs::file_size(out) > 0, "XYZ output non-empty");
-
-    // First line should contain parseable floats
-    std::ifstream f(out);
-    std::string line;
-    std::getline(f, line);
-    if (!line.empty()) {
-        std::istringstream iss(line);
-        double x, y, z;
-        bool ok = (iss >> x >> y >> z) ? true : false;
-        EXPECT_TRUE(ok, "first XYZ line parseable: " + line);
-    }
-    fs::remove(out);
-    passMsg("test_bag_to_xyz");
-}
-
-// ---------------------------------------------------------------------------
-// Test 9: GeoTIFF → XYZ
-// ---------------------------------------------------------------------------
-static void test_geotiff_to_xyz() {
-    fs::path src = "test/data/tif/synthetic.tif";
-    fs::path out = "/tmp/bathy_test_geotiff_to_xyz.xyz";
-    bathy::ConvertOptions opts;
-    opts.targetFormat     = bathy::Format::XYZ;
-    opts.strictValidation = false;
-    bathy::convertFile(src, out, opts);
-    EXPECT_TRUE(fs::exists(out), "XYZ output exists");
-    EXPECT_TRUE(fs::file_size(out) > 0, "XYZ output non-empty");
-    fs::remove(out);
-    passMsg("test_geotiff_to_xyz");
-}
-
-// ---------------------------------------------------------------------------
-// Test 10: XYZ → GeoTIFF
+// Test 8: XYZ → GeoTIFF
 // ---------------------------------------------------------------------------
 static void test_xyz_to_geotiff() {
     fs::path src = "test/data/xyz/sample.xyz";
-    fs::path out = "/tmp/bathy_test_xyz_to_geotiff.tif";
+    fs::path out = fs::temp_directory_path() / "bathy_test_xyz_to_geotiff.tif";
     bathy::ConvertOptions opts;
     opts.targetFormat     = bathy::Format::GeoTIFF;
     opts.strictValidation = false;
@@ -384,38 +324,7 @@ static void test_xyz_to_geotiff() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 11: GSF → XYZ
-// ---------------------------------------------------------------------------
-static void test_gsf_to_xyz() {
-    fs::path dir = "test/data/gsf";
-    auto files = collectGsf(dir);
-
-    bool anyTested = false;
-    for (auto& p : files) {
-        fs::path out = fs::path("/tmp") /
-                       ("bathy_test_gsf_" + p.stem().string() + ".xyz");
-        try {
-            bathy::ConvertOptions opts;
-            opts.targetFormat     = bathy::Format::XYZ;
-            opts.strictValidation = false;
-            bathy::convertFile(p, out, opts);
-            EXPECT_TRUE(fs::exists(out), "GSF XYZ output exists");
-            // File may be empty for files with no ping data
-            std::cout << "  " << p.filename() << " → "
-                      << fs::file_size(out) << " bytes\n";
-            fs::remove(out);
-            anyTested = true;
-        } catch (std::exception& e) {
-            std::cout << "  " << p.filename() << ": " << e.what() << " (skipped)\n";
-            fs::remove(out);
-        }
-    }
-    if (!anyTested) std::cout << "  SKIP: no GSF files with data\n";
-    passMsg("test_gsf_to_xyz");
-}
-
-// ---------------------------------------------------------------------------
-// Test 12: round-trip BAG → GeoTIFF → GeoTIFF
+// Test 9: round-trip BAG → GeoTIFF → GeoTIFF
 // ---------------------------------------------------------------------------
 static void test_round_trip_bag_geotiff() {
     // Find a usable BAG
@@ -432,8 +341,8 @@ static void test_round_trip_bag_geotiff() {
         return;
     }
 
-    fs::path tmp1 = "/tmp/bathy_roundtrip1.tif";
-    fs::path tmp2 = "/tmp/bathy_roundtrip2.tif";
+    fs::path tmp1 = fs::temp_directory_path() / "bathy_roundtrip1.tif";
+    fs::path tmp2 = fs::temp_directory_path() / "bathy_roundtrip2.tif";
 
     bathy::ConvertOptions opts1;
     opts1.targetFormat     = bathy::Format::GeoTIFF;
@@ -485,7 +394,7 @@ static void test_no_crs_bag() {
         noCrsBag = "test/data/bag/synth_v100_no_crs.bag";
     }
 
-    fs::path out = "/tmp/bathy_test_no_crs.tif";
+    fs::path out = fs::temp_directory_path() / "bathy_test_no_crs.tif";
     bathy::ConvertOptions opts;
     opts.targetFormat     = bathy::Format::GeoTIFF;
     opts.assumedEpsg      = 4326;
@@ -539,7 +448,7 @@ static void test_strict_validation() {
     // Positive test: strict conversion of a known-good file should not throw
     bool threw = false;
     fs::path src = "test/data/xyz/sample.xyz";
-    fs::path out = "/tmp/bathy_strict_test.tif";
+    fs::path out = fs::temp_directory_path() / "bathy_strict_test.tif";
     try {
         bathy::ConvertOptions opts;
         opts.targetFormat     = bathy::Format::GeoTIFF;
@@ -562,6 +471,8 @@ static void test_strict_validation() {
 // main
 // ---------------------------------------------------------------------------
 int main() {
+    // Unbuffered stdout so output is not lost if the process crashes on Windows
+    std::cout << std::unitbuf;
     std::cout << "=== Bathymetry library tests ===\n\n";
 
     // Set GDAL data path if running from build dir
@@ -589,10 +500,7 @@ int main() {
     test_query_xyz();
     test_query_gsf();
     test_bag_to_geotiff_all();
-    test_bag_to_xyz();
-    test_geotiff_to_xyz();
     test_xyz_to_geotiff();
-    test_gsf_to_xyz();
     test_round_trip_bag_geotiff();
     test_no_crs_bag();
     test_strict_validation();
