@@ -60,27 +60,40 @@ if(NOT MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# Copy GDAL (and sibling) DLLs next to test_bathymetry.exe on Windows so it
-# runs from the repo root without PATH changes.
+# Copy all transitive DLL dependencies next to test_bathymetry.exe on Windows.
+# cmake/copy_runtime_deps.cmake uses file(GET_RUNTIME_DEPENDENCIES) to walk
+# the full dependency tree, so GDAL's deps (libxml2, libcrypto, zstd, …) are
+# all captured regardless of where they were installed.
 # ---------------------------------------------------------------------------
 if(MSVC)
+    # Build the DLL search path from every candidate location.
+    set(_dll_search_dirs "")
+
+    # 1. vcpkg flat bin dir (all packages share one dir).
     if(DEFINED _VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
-        # All vcpkg packages share one flat bin/ dir — copy the whole thing.
-        set(_runtime_bin "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
-    elseif(GDAL_LIB)
-        # Local deps layout: bin/ sits alongside lib/ under the same root.
-        get_filename_component(_gdal_lib_dir "${GDAL_LIB}" DIRECTORY)
-        get_filename_component(_gdal_root_dir "${_gdal_lib_dir}" DIRECTORY)
-        set(_runtime_bin "${_gdal_root_dir}/bin")
+        list(APPEND _dll_search_dirs
+            "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
     endif()
 
-    if(DEFINED _runtime_bin)
-        message(STATUS "Runtime DLL source: ${_runtime_bin}")
-        add_custom_command(TARGET test_bathymetry POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${_runtime_bin}"
-                "$<TARGET_FILE_DIR:test_bathymetry>"
-            COMMENT "Copying runtime DLLs from ${_runtime_bin}"
-        )
+    # 2. Local windows-deps or any GDAL_ROOT the caller passed.
+    if(GDAL_LIB)
+        get_filename_component(_gdal_lib_dir "${GDAL_LIB}" DIRECTORY)
+        get_filename_component(_gdal_root_dir "${_gdal_lib_dir}" DIRECTORY)
+        list(APPEND _dll_search_dirs "${_gdal_root_dir}/bin")
     endif()
+
+    list(REMOVE_DUPLICATES _dll_search_dirs)
+    message(STATUS "Runtime DLL search dirs: ${_dll_search_dirs}")
+
+    # Convert list to a semicolon-separated string safe for -D on the command line.
+    string(REPLACE ";" "|" _dll_search_dirs_arg "${_dll_search_dirs}")
+
+    add_custom_command(TARGET test_bathymetry POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            "-DEXE=$<TARGET_FILE:test_bathymetry>"
+            "-DOUT_DIR=$<TARGET_FILE_DIR:test_bathymetry>"
+            "-DSEARCH_DIRS=$<JOIN:${_dll_search_dirs},|>"
+            -P "${CMAKE_SOURCE_DIR}/cmake/copy_runtime_deps.cmake"
+        COMMENT "Copying transitive DLL dependencies…"
+    )
 endif()
