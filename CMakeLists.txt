@@ -8,12 +8,16 @@ add_subdirectory("${CMAKE_SOURCE_DIR}/deps/gsf" "${CMAKE_BINARY_DIR}/deps/gsf" E
 
 # ---------------------------------------------------------------------------
 # Locate GDAL
-#   Windows : bootstrap-windows.ps1 builds GDAL into windows-deps/gdal/
-#             Override with -DGDAL_ROOT=<path>
-#   Linux   : deps/gdal/ (pre-built in-repo)
-#             Override with -DGDAL_ROOT=<path>
+#   vcpkg     : find_package(GDAL) works via the vcpkg toolchain; provides
+#               the GDAL::GDAL imported target with correct include/lib/dll.
+#   Windows   : bootstrap-windows.ps1 builds GDAL into windows-deps/gdal/
+#               Override with -DGDAL_ROOT=<path>
+#   Linux     : deps/gdal/ (pre-built in-repo)
+#               Override with -DGDAL_ROOT=<path>
 # ---------------------------------------------------------------------------
-if(MSVC)
+if(DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+    find_package(GDAL CONFIG REQUIRED)
+elseif(MSVC)
     if(NOT DEFINED GDAL_ROOT)
         set(GDAL_ROOT "${CMAKE_SOURCE_DIR}/windows-deps/gdal")
     endif()
@@ -28,16 +32,21 @@ else()
 endif()
 
 add_library(bathymetry STATIC bathymetry.cpp)
-target_include_directories(bathymetry
-    PUBLIC  "${CMAKE_SOURCE_DIR}"
-    PRIVATE "${CMAKE_SOURCE_DIR}/deps/gsf/src"
-    PRIVATE "${GDAL_ROOT}/include")
+target_include_directories(bathymetry PUBLIC "${CMAKE_SOURCE_DIR}")
+
+if(DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+    # GDAL::GDAL imported target carries include dirs, lib, and dll info
+    target_link_libraries(bathymetry PRIVATE GDAL::GDAL gsf)
+else()
+    target_include_directories(bathymetry
+        PRIVATE "${CMAKE_SOURCE_DIR}/deps/gsf/src"
+        PRIVATE "${GDAL_ROOT}/include")
+    target_link_libraries(bathymetry PRIVATE "${GDAL_LIB}" gsf)
+endif()
 
 if(MSVC)
-    target_link_libraries(bathymetry PRIVATE "${GDAL_LIB}" gsf)
     target_compile_options(bathymetry PRIVATE /W4 /WX /std:c++17)
 else()
-    target_link_libraries(bathymetry PRIVATE ${GDAL_LIB} gsf)
     target_compile_options(bathymetry PRIVATE -Wall -Wextra -Wno-error)
     target_compile_definitions(bathymetry PRIVATE _LARGEFILE64_SOURCE _GNU_SOURCE)
 endif()
@@ -47,4 +56,16 @@ target_link_libraries(test_bathymetry PRIVATE bathymetry)
 
 if(NOT MSVC)
     target_link_libraries(test_bathymetry PRIVATE dl m)
+endif()
+
+# ---------------------------------------------------------------------------
+# Copy vcpkg DLLs next to the test exe so it runs without PATH changes
+# ---------------------------------------------------------------------------
+if(MSVC AND DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+    add_custom_command(TARGET test_bathymetry POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
+            "$<TARGET_FILE_DIR:test_bathymetry>"
+        COMMENT "Copying vcpkg runtime DLLs to output directory"
+    )
 endif()
