@@ -62,16 +62,25 @@ endif()
 # ---------------------------------------------------------------------------
 # Copy GDAL (and sibling) DLLs next to test_bathymetry.exe on Windows so it
 # runs from the repo root without PATH changes.
-# The bin/ dir sits alongside the lib/ dir where gdal.lib was found.
 # ---------------------------------------------------------------------------
-if(MSVC AND GDAL_LIB)
-    get_filename_component(_gdal_lib_dir "${GDAL_LIB}" DIRECTORY)
-    get_filename_component(_gdal_root_dir "${_gdal_lib_dir}" DIRECTORY)
-    set(_gdal_bin_dir "${_gdal_root_dir}/bin")
-    add_custom_command(TARGET test_bathymetry POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${_gdal_bin_dir}"
-            "$<TARGET_FILE_DIR:test_bathymetry>"
-        COMMENT "Copying GDAL runtime DLLs from ${_gdal_bin_dir}"
-    )
+if(MSVC)
+    if(DEFINED _VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+        # All vcpkg packages share one flat bin/ dir — copy the whole thing.
+        set(_runtime_bin "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
+    elseif(GDAL_LIB)
+        # Local deps layout: bin/ sits alongside lib/ under the same root.
+        get_filename_component(_gdal_lib_dir "${GDAL_LIB}" DIRECTORY)
+        get_filename_component(_gdal_root_dir "${_gdal_lib_dir}" DIRECTORY)
+        set(_runtime_bin "${_gdal_root_dir}/bin")
+    endif()
+
+    if(DEFINED _runtime_bin)
+        message(STATUS "Runtime DLL source: ${_runtime_bin}")
+        add_custom_command(TARGET test_bathymetry POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${_runtime_bin}"
+                "$<TARGET_FILE_DIR:test_bathymetry>"
+            COMMENT "Copying runtime DLLs from ${_runtime_bin}"
+        )
+    endif()
 endif()
