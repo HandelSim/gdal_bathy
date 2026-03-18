@@ -63,9 +63,10 @@ endif()
 # ---------------------------------------------------------------------------
 if(MSVC AND DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
     add_custom_command(TARGET test_bathymetry POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
+        COMMAND ${CMAKE_COMMAND} -E copy -t
             "$<TARGET_FILE_DIR:test_bathymetry>"
-        COMMENT "Copying vcpkg runtime DLLs to output directory"
+            $<TARGET_RUNTIME_DLLS:test_bathymetry>
+        COMMAND_EXPAND_LISTS
+        COMMENT "Copying runtime DLLs to output directory"
     )
 endif()
