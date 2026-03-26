@@ -1,13 +1,13 @@
 #!/bin/sh
-CONFIG_LIBS="-L/home/user/gdal_bathy/deps/gdal/lib -lgdal"
-CONFIG_DEP_LIBS="-ldl -llzma -lexpat -L/usr/lib/x86_64-linux-gnu/hdf5/serial/lib -lhdf5 -lproj -lz -lstdc++ -lm"
-CONFIG_PREFIX="/home/user/gdal_bathy/deps/gdal"
-CONFIG_CFLAGS="-I/home/user/gdal_bathy/deps/gdal/include"
-CONFIG_DATA="/home/user/gdal_bathy/deps/gdal/share/gdal"
+CONFIG_LIBS="-LIBPATH:C:/gdal-minimal/lib gdal"
+CONFIG_DEP_LIBS="C:/vcpkg/installed/x64-windows/lib/iconv.lib C:/vcpkg/installed/x64-windows/lib/charset.lib legacy_stdio_definitions.lib odbccp32.lib C:/vcpkg/installed/x64-windows/lib/libssl.lib C:/vcpkg/installed/x64-windows/lib/libcrypto.lib crypt32 C:/vcpkg/installed/x64-windows/lib/zstd.lib C:/vcpkg/installed/x64-windows/lib/lzma.lib C:/vcpkg/installed/x64-windows/lib/lz4.lib wbemuuid C:/vcpkg/installed/x64-windows/lib/qhull_r.lib C:/vcpkg/installed/x64-windows/lib/libexpat.lib C:/vcpkg/installed/x64-windows/lib/jpeg.lib C:/vcpkg/installed/x64-windows/lib/geotiff_i.lib C:/vcpkg/installed/x64-windows/lib/tiff.lib C:/vcpkg/installed/x64-windows/lib/hdf5.lib shlwapi C:/vcpkg/installed/x64-windows/lib/libxml2.lib C:/vcpkg/installed/x64-windows/lib/geos_c.lib psapi C:/vcpkg/installed/x64-windows/lib/proj.lib C:/vcpkg/installed/x64-windows/lib/json-c.lib C:/vcpkg/installed/x64-windows/lib/zlib.lib"
+CONFIG_PREFIX="C:/gdal-minimal"
+CONFIG_CFLAGS="-IC:/gdal-minimal/include"
+CONFIG_DATA="C:/gdal-minimal/share/gdal"
 CONFIG_VERSION="3.12.2"
 CONFIG_GNM_ENABLED=yes
 CONFIG_FORMATS="GTIFF MEM vrt XYZ HDF5 GeoJSON Shape"
-CONFIG_PLUGINDIR="/home/user/gdal_bathy/deps/gdal/lib/gdalplugins"
+CONFIG_PLUGINDIR="C:/gdal-minimal/lib/gdalplugins"
 usage()
 
 {
