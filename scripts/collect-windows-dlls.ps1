@@ -110,7 +110,7 @@ if (Test-Path $gsfDll) {
 }
 
 # ── 3. VC++ runtime DLLs ──────────────────────────────────────────────────────
-Write-Host "`n[3/3] Copying VC++ runtime DLLs ..."
+Write-Host "`n[3/4] Copying VC++ runtime DLLs ..."
 
 # Search common VS 2022 redist locations for the CRT x64 directory.
 $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
@@ -122,6 +122,7 @@ $crtDirs = @(
     "$vsBase\BuildTools\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT"
 )
 
+# Desktop CRT DLLs (needed by anything built with MSVC)
 $crtDllNames = @(
     "msvcp140.dll",
     "msvcp140_1.dll",
@@ -141,15 +142,65 @@ foreach ($pattern in $crtDirs) {
             $src = Join-Path $crtDir $dll
             if (Test-Path $src) { Copy-DLL -Src $src -DstDir $GdalBinDst }
         }
+
+        # vcruntime140_app.dll lives in the CRTapp sibling directory.
+        # It is required if any dependency was compiled targeting UWP/AppContainer.
+        $crtAppDir = $crtDir -replace 'Microsoft\.VC143\.CRT$', 'Microsoft.VC143.CRTapp'
+        if (Test-Path $crtAppDir) {
+            $appDll = Join-Path $crtAppDir "vcruntime140_app.dll"
+            if (Test-Path $appDll) {
+                Copy-DLL -Src $appDll -DstDir $GdalBinDst
+                Write-Host "  Copied vcruntime140_app.dll (UWP CRT)"
+            }
+        } else {
+            # Fallback: it may already be in System32 on the target machine.
+            Write-Warning "vcruntime140_app.dll not found in VS Redist."
+            Write-Warning "  It is normally present in C:\Windows\System32 on Windows 10/11."
+            Write-Warning "  If missing, install the latest Windows Update or VS 2022 Redistributable."
+        }
+
         $crtFound = $true
         break
     }
 }
 
 if (-not $crtFound) {
-    # Fall back to whatever is in System32 (already on any machine with VS)
     Write-Warning "VC++ Redist dir not found — runtime DLLs not copied."
     Write-Warning "Install 'Microsoft Visual C++ Redistributable (x64)' on target machines."
+}
+
+# ── 4. OpenSSL legacy compatibility (ssleay32 / libeay32) ─────────────────────
+# ssleay32.dll / libeay32.dll are the OpenSSL 1.0.x DLL names.
+# They are NOT provided by OpenSSL 3 (which ships libssl-3-x64 / libcrypto-3-x64).
+# If your software or a dependency imports ssleay32.dll it was compiled against
+# OpenSSL 1.0.x.  Options:
+#   A) Re-compile that dependency against OpenSSL 3 — the right long-term fix.
+#   B) Install "Win64 OpenSSL v1.0.2u Light" from https://slproweb.com/products/Win32OpenSSL.html
+#      and copy ssleay32.dll / libeay32.dll from its install dir (default C:\OpenSSL-Win64).
+#   C) The shimming approach below copies them from a local OpenSSL 1.0.2 install if present.
+Write-Host "`n[4/4] Checking for OpenSSL 1.0.x legacy DLLs (ssleay32 / libeay32) ..."
+$openssl10Dirs = @(
+    "C:\OpenSSL-Win64",
+    "C:\OpenSSL",
+    "C:\Program Files\OpenSSL-Win64",
+    "C:\Program Files\OpenSSL"
+)
+$legacySslFound = $false
+foreach ($d in $openssl10Dirs) {
+    $ss = Join-Path $d "ssleay32.dll"
+    $le = Join-Path $d "libeay32.dll"
+    if ((Test-Path $ss) -or (Test-Path $le)) {
+        if (Test-Path $ss) { Copy-DLL -Src $ss -DstDir $GdalBinDst; Write-Host "  Copied ssleay32.dll from $d" }
+        if (Test-Path $le) { Copy-DLL -Src $le -DstDir $GdalBinDst; Write-Host "  Copied libeay32.dll from $d" }
+        $legacySslFound = $true
+        break
+    }
+}
+if (-not $legacySslFound) {
+    Write-Warning "ssleay32.dll / libeay32.dll not found."
+    Write-Warning "  These are OpenSSL 1.0.x DLLs.  Install Win64 OpenSSL 1.0.2 from:"
+    Write-Warning "    https://slproweb.com/products/Win32OpenSSL.html"
+    Write-Warning "  or re-build the dependency that needs them against OpenSSL 3."
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────
