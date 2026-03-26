@@ -60,23 +60,32 @@ if(NOT MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# DLL deployment on Windows:
-# When using vcpkg (CMake + MSBuild), the vcpkg toolchain injects
-# applocal.ps1 as a POST_BUILD step automatically.  It already copies every
-# transitive DLL from vcpkg's installed/<triplet>/bin/ next to the exe, so
-# no extra step is needed here.
-#
-# For non-vcpkg local builds (windows-deps/gdal), copy the bin/ dir manually.
+# DLL deployment on Windows
 # ---------------------------------------------------------------------------
-if(MSVC AND GDAL_LIB AND NOT DEFINED _VCPKG_INSTALLED_DIR)
-    get_filename_component(_gdal_lib_dir "${GDAL_LIB}" DIRECTORY)
-    get_filename_component(_gdal_root_dir "${_gdal_lib_dir}" DIRECTORY)
-    set(_gdal_bin_dir "${_gdal_root_dir}/bin")
-    message(STATUS "Non-vcpkg build: copying DLLs from ${_gdal_bin_dir}")
+if(MSVC)
+    # gsf is built as SHARED on Windows; copy its DLL next to the exe.
     add_custom_command(TARGET test_bathymetry POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${_gdal_bin_dir}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:gsf>"
             "$<TARGET_FILE_DIR:test_bathymetry>"
-        COMMENT "Copying GDAL runtime DLLs"
+        COMMENT "Copying gsf.dll next to test_bathymetry.exe"
     )
+
+    # For non-vcpkg local builds copy the pre-built GDAL bin/ tree.
+    # vcpkg builds get their DLLs via the injected applocal.ps1 step.
+    if(GDAL_LIB AND NOT DEFINED _VCPKG_INSTALLED_DIR)
+        get_filename_component(_gdal_lib_dir "${GDAL_LIB}" DIRECTORY)
+        get_filename_component(_gdal_root_dir "${_gdal_lib_dir}" DIRECTORY)
+        set(_gdal_bin_dir "${_gdal_root_dir}/bin")
+        if(EXISTS "${_gdal_bin_dir}")
+            message(STATUS "Non-vcpkg build: copying DLLs from ${_gdal_bin_dir}")
+            add_custom_command(TARGET test_bathymetry POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${_gdal_bin_dir}"
+                    "$<TARGET_FILE_DIR:test_bathymetry>"
+                COMMENT "Copying GDAL runtime DLLs"
+                APPEND
+            )
+        endif()
+    endif()
 endif()

@@ -2,7 +2,18 @@ cmake_minimum_required(VERSION 3.10)
 project(gsf C)
 
 file(GLOB GSF_SOURCES "src/*.c")
-add_library(gsf STATIC ${GSF_SOURCES})
+
+# Build as SHARED (DLL) on Windows so callers can load it dynamically.
+# On Linux/macOS keep STATIC to match the pre-built libs shipped in deps/.
+if(MSVC)
+  add_library(gsf SHARED ${GSF_SOURCES})
+  # Let CMake auto-generate a .def file that exports every public symbol;
+  # avoids having to sprinkle __declspec(dllexport) through the headers.
+  set_target_properties(gsf PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+else()
+  add_library(gsf STATIC ${GSF_SOURCES})
+endif()
+
 target_include_directories(gsf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(MSVC)
@@ -22,5 +33,8 @@ else()
   target_compile_definitions(gsf PRIVATE _GNU_SOURCE _LARGEFILE64_SOURCE)
 endif()
 
-install(TARGETS gsf ARCHIVE DESTINATION lib)
+install(TARGETS gsf
+  RUNTIME DESTINATION bin    # .dll on Windows
+  ARCHIVE DESTINATION lib    # .lib import lib on Windows, .a on Linux
+  LIBRARY DESTINATION lib)   # .so on Linux
 install(DIRECTORY src/ DESTINATION include/gsf FILES_MATCHING PATTERN "*.h")
