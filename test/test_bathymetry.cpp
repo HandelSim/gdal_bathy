@@ -90,7 +90,7 @@ static std::vector<fs::path> collectGsf(const fs::path& dir) {
 // Test 1: version
 // ---------------------------------------------------------------------------
 static void test_version() {
-    std::string v = bathy::version();
+    std::string v = bathy::Version();
     EXPECT_TRUE(!v.empty(), "version() is non-empty");
     EXPECT_TRUE(v.find("gdal") != std::string::npos, "version() contains 'gdal'");
     std::cout << "  version string: " << v << "\n";
@@ -102,7 +102,7 @@ static void test_version() {
 // ---------------------------------------------------------------------------
 static void test_query_geotiff() {
     fs::path p = "test/data/tif/synthetic.tif";
-    bathy::FileInfo fi = bathy::queryFile(p);
+    bathy::FileInfo fi = bathy::QueryFile(p);
     EXPECT_TRUE(fi.format == bathy::Format::GeoTIFF,  "format==GeoTIFF");
     EXPECT_TRUE(fi.raster.width  == 100, "width==100");
     EXPECT_TRUE(fi.raster.height == 100, "height==100");
@@ -139,7 +139,7 @@ static void test_query_all_bags() {
         // Skip obviously corrupt files by name prefix OR known-problematic files
         bool expectSkip = (stem.rfind("corrupt_", 0) == 0) || isKnownSkip(stem);
         try {
-            bathy::FileInfo fi = bathy::queryFile(p);
+            bathy::FileInfo fi = bathy::QueryFile(p);
             EXPECT_TRUE(fi.format == bathy::Format::BAG,
                         "format==BAG for " + p.filename().string());
 
@@ -199,7 +199,7 @@ static void test_bag_crs_coverage() {
 // ---------------------------------------------------------------------------
 static void test_query_xyz() {
     fs::path p = "test/data/xyz/sample.xyz";
-    bathy::FileInfo fi = bathy::queryFile(p);
+    bathy::FileInfo fi = bathy::QueryFile(p);
     EXPECT_TRUE(fi.format == bathy::Format::XYZ, "format==XYZ");
     EXPECT_TRUE(fi.raster.width  == 20, "width==20");
     EXPECT_TRUE(fi.raster.height == 20, "height==20");
@@ -220,7 +220,7 @@ static void test_query_gsf() {
     bool anyPings = false;
     for (auto& p : files) {
         try {
-            bathy::FileInfo fi = bathy::queryFile(p);
+            bathy::FileInfo fi = bathy::QueryFile(p);
             EXPECT_TRUE(fi.format == bathy::Format::GSF,
                         "format==GSF for " + p.filename().string());
             std::cout << "  " << p.filename() << ": pingCount=" << fi.gsf.pingCount << "\n";
@@ -255,16 +255,16 @@ static void test_bag_to_geotiff_all() {
         fs::path outPath = tmpDir / ("bathy_test_" + stem + ".tif");
 
         try {
-            bathy::FileInfo srcInfo = bathy::queryFile(p);
+            bathy::FileInfo srcInfo = bathy::QueryFile(p);
             bathy::ConvertOptions opts;
             opts.targetFormat     = bathy::Format::GeoTIFF;
             opts.strictValidation = false; // some BAGs have special structure
 
-            bathy::convertFile(p, outPath, opts);
+            bathy::ConvertFile(p, outPath, opts);
             EXPECT_TRUE(fs::exists(outPath),
                         "output file exists for " + stem);
 
-            bathy::FileInfo dstInfo = bathy::queryFile(outPath);
+            bathy::FileInfo dstInfo = bathy::QueryFile(outPath);
             EXPECT_TRUE(dstInfo.format == bathy::Format::GeoTIFF,
                         "output is GeoTIFF for " + stem);
 
@@ -312,10 +312,10 @@ static void test_xyz_to_geotiff() {
     bathy::ConvertOptions opts;
     opts.targetFormat     = bathy::Format::GeoTIFF;
     opts.strictValidation = false;
-    bathy::convertFile(src, out, opts);
+    bathy::ConvertFile(src, out, opts);
     EXPECT_TRUE(fs::exists(out), "GeoTIFF output exists");
 
-    bathy::FileInfo fi = bathy::queryFile(out);
+    bathy::FileInfo fi = bathy::QueryFile(out);
     EXPECT_TRUE(fi.format == bathy::Format::GeoTIFF, "format==GeoTIFF");
     EXPECT_TRUE(fi.raster.width  == 20, "width==20");
     EXPECT_TRUE(fi.raster.height == 20, "height==20");
@@ -354,11 +354,11 @@ static void test_round_trip_bag_geotiff() {
     opts2.tiffCompression  = "LZW";
     opts2.strictValidation = false;
 
-    bathy::convertFile(src,  tmp1, opts1);
-    bathy::convertFile(tmp1, tmp2, opts2);
+    bathy::ConvertFile(src,  tmp1, opts1);
+    bathy::ConvertFile(tmp1, tmp2, opts2);
 
-    bathy::FileInfo fi1 = bathy::queryFile(tmp1);
-    bathy::FileInfo fi2 = bathy::queryFile(tmp2);
+    bathy::FileInfo fi1 = bathy::QueryFile(tmp1);
+    bathy::FileInfo fi2 = bathy::QueryFile(tmp2);
 
     EXPECT_TRUE(fi1.raster.width  == fi2.raster.width,  "round-trip width matches");
     EXPECT_TRUE(fi1.raster.height == fi2.raster.height, "round-trip height matches");
@@ -399,9 +399,9 @@ static void test_no_crs_bag() {
     opts.targetFormat     = bathy::Format::GeoTIFF;
     opts.assumedEpsg      = 4326;
     opts.strictValidation = false;
-    bathy::convertFile(noCrsBag, out, opts);
+    bathy::ConvertFile(noCrsBag, out, opts);
 
-    bathy::FileInfo fi = bathy::queryFile(out);
+    bathy::FileInfo fi = bathy::QueryFile(out);
     EXPECT_TRUE(!fi.raster.crsWkt.empty(), "output has CRS");
     bool hasWgs = (fi.raster.crsWkt.find("4326") != std::string::npos ||
                    fi.raster.crsWkt.find("WGS 84") != std::string::npos ||
@@ -453,7 +453,7 @@ static void test_strict_validation() {
         bathy::ConvertOptions opts;
         opts.targetFormat     = bathy::Format::GeoTIFF;
         opts.strictValidation = true;
-        bathy::convertFile(src, out, opts);
+        bathy::ConvertFile(src, out, opts);
     } catch (std::exception& e) {
         threw = true;
         std::cerr << "  strict validation threw unexpectedly: " << e.what() << "\n";

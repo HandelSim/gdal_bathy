@@ -66,21 +66,21 @@ struct ConvertOptions {
 
 /// Detect format and read spatial/structural metadata.
 /// Throws std::runtime_error on unreadable or corrupt input.
-FileInfo queryFile(const std::filesystem::path& inputPath);
+FileInfo QueryFile(const std::filesystem::path& inputPath);
 
 /// Return a human-readable description of the file (similar to gdalinfo).
 /// Includes format, dimensions, CRS, geo-transform, nodata, band info,
 /// and for GSF files: ping count, lat/lon bounds, depth range.
-std::string describeFile(const std::filesystem::path& inputPath);
+std::string DescribeFile(const std::filesystem::path& inputPath);
 
 /// Convert inputPath to outputPath in the format specified by opts.targetFormat.
 /// Auto-detects the source format. Throws std::runtime_error on failure or
 /// detected data loss when opts.strictValidation is true.
-void convertFile(const std::filesystem::path& inputPath,
+void ConvertFile(const std::filesystem::path& inputPath,
                  const std::filesystem::path& outputPath,
                  const ConvertOptions& opts = {});
 
 /// Return a version string, e.g. "bathymetry/1.0 gdal/3.12.2"
-std::string version();
+std::string Version();
 
 } // namespace bathy

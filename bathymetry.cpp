@@ -129,7 +129,7 @@ static RasterInfo rasterInfoFromDataset(GDALDataset* ds) {
 // ---------------------------------------------------------------------------
 // queryFile
 // ---------------------------------------------------------------------------
-FileInfo queryFile(const std::filesystem::path& inputPath) {
+FileInfo QueryFile(const std::filesystem::path& inputPath) {
     ensureGdalInit();
 
     FileInfo fi;
@@ -508,7 +508,7 @@ static void rasterToGsf(const std::filesystem::path& input,
 // ---------------------------------------------------------------------------
 // convertFile — main entry point
 // ---------------------------------------------------------------------------
-void convertFile(const std::filesystem::path& inputPath,
+void ConvertFile(const std::filesystem::path& inputPath,
                  const std::filesystem::path& outputPath,
                  const ConvertOptions& opts) {
     ensureGdalInit();
@@ -671,8 +671,8 @@ static const char* formatName(Format f) {
     }
 }
 
-std::string describeFile(const std::filesystem::path& inputPath) {
-    FileInfo fi = queryFile(inputPath);
+std::string DescribeFile(const std::filesystem::path& inputPath) {
+    FileInfo fi = QueryFile(inputPath);
     std::ostringstream os;
 
     os << "File:   " << inputPath.filename().string() << "\n";
@@ -737,7 +737,7 @@ std::string describeFile(const std::filesystem::path& inputPath) {
 // ---------------------------------------------------------------------------
 // version()
 // ---------------------------------------------------------------------------
-std::string version() {
+std::string Version() {
     std::string v = "bathymetry/1.0 gdal/";
     v += GDALVersionInfo("RELEASE_NAME");
     v += " gsf/03.11";
