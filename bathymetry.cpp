@@ -659,6 +659,82 @@ void convertFile(const std::filesystem::path& inputPath,
 }
 
 // ---------------------------------------------------------------------------
+// describeFile — human-readable file info (like gdalinfo)
+// ---------------------------------------------------------------------------
+static const char* formatName(Format f) {
+    switch (f) {
+        case Format::BAG:     return "BAG (HDF5)";
+        case Format::GeoTIFF: return "GeoTIFF";
+        case Format::XYZ:     return "XYZ (ASCII grid)";
+        case Format::GSF:     return "GSF (Generic Sensor Format)";
+        default:              return "Unknown";
+    }
+}
+
+std::string describeFile(const std::filesystem::path& inputPath) {
+    FileInfo fi = queryFile(inputPath);
+    std::ostringstream os;
+
+    os << "File:   " << inputPath.filename().string() << "\n";
+    os << "Format: " << formatName(fi.format) << "\n";
+
+    if (fi.format == Format::GSF) {
+        os << "Pings:  " << fi.gsf.pingCount << "\n";
+        if (!fi.gsf.pings.empty()) {
+            double minLat = 1e18, maxLat = -1e18;
+            double minLon = 1e18, maxLon = -1e18;
+            double minD = 1e18, maxD = -1e18;
+            int totalBeams = 0;
+            for (auto& p : fi.gsf.pings) {
+                minLat = std::min(minLat, p.latitude);
+                maxLat = std::max(maxLat, p.latitude);
+                minLon = std::min(minLon, p.longitude);
+                maxLon = std::max(maxLon, p.longitude);
+                if (p.depthMin != 0.0 || p.depthMax != 0.0) {
+                    minD = std::min(minD, p.depthMin);
+                    maxD = std::max(maxD, p.depthMax);
+                }
+                totalBeams += p.beamCount;
+            }
+            os << std::fixed << std::setprecision(6);
+            os << "Lat:    " << minLat << " to " << maxLat << "\n";
+            os << "Lon:    " << minLon << " to " << maxLon << "\n";
+            os << std::setprecision(2);
+            if (minD < 1e17)
+                os << "Depth:  " << minD << " to " << maxD << "\n";
+            os << "Beams:  " << totalBeams << " total\n";
+        } else if (fi.gsf.pingCount == 0) {
+            os << "  (no bathymetry ping records — file may contain only metadata)\n";
+        } else {
+            os << "  (ping details omitted — count exceeds 10000)\n";
+        }
+    } else {
+        auto& r = fi.raster;
+        os << "Size:   " << r.width << " x " << r.height << " (" << r.bandCount << " band"
+           << (r.bandCount != 1 ? "s" : "") << ")\n";
+        os << std::fixed << std::setprecision(10);
+        os << "Origin: (" << r.originX << ", " << r.originY << ")\n";
+        os << "Pixel:  (" << r.pixelSizeX << ", " << r.pixelSizeY << ")\n";
+        if (r.hasNoData)
+            os << "NoData: " << r.noDataValue << "\n";
+        if (!r.crsWkt.empty()) {
+            OGRSpatialReference srs;
+            srs.importFromWkt(r.crsWkt.c_str());
+            const char* name = srs.GetName();
+            const char* auth = srs.GetAuthorityName(nullptr);
+            const char* code = srs.GetAuthorityCode(nullptr);
+            os << "CRS:    ";
+            if (name) os << name;
+            if (auth && code) os << " [" << auth << ":" << code << "]";
+            os << "\n";
+        } else {
+            os << "CRS:    (none)\n";
+        }
+    }
+    return os.str();
+}
+
+// ---------------------------------------------------------------------------
 // version()
 // ---------------------------------------------------------------------------
 std::string version() {
