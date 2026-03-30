@@ -1,5 +1,6 @@
 #pragma once
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 #include <stdexcept>
@@ -9,23 +10,22 @@ namespace bathy {
 enum class Format { BAG, GeoTIFF, XYZ, GSF, Unknown };
 
 struct RasterInfo {
-    int         width        = 0;
-    int         height       = 0;
-    int         bandCount    = 0;
-    double      originX      = 0.0;   // top-left X (longitude or easting)
-    double      originY      = 0.0;   // top-left Y (latitude or northing)
-    double      pixelSizeX   = 0.0;   // positive eastward
-    double      pixelSizeY   = 0.0;   // negative southward (standard convention)
-    std::string crsWkt;               // empty string if coordinate system is unknown
-    double      noDataValue  = 0.0;
-    bool        hasNoData    = false;
+    int                    width        = 0;
+    int                    height       = 0;
+    int                    bandCount    = 0;
+    double                 originX      = 0.0;   // top-left X (longitude or easting)
+    double                 originY      = 0.0;   // top-left Y (latitude or northing)
+    double                 pixelSizeX   = 0.0;   // positive eastward
+    double                 pixelSizeY   = 0.0;   // negative southward (standard convention)
+    std::optional<std::string> crsWkt;            // nullopt if coordinate system is unknown
+    std::optional<double>  noDataValue;           // nullopt if no NoData is set
 };
 
 struct GsfPingInfo {
     double latitude  = 0.0;
     double longitude = 0.0;
-    double depthMin  = 0.0;
-    double depthMax  = 0.0;
+    std::optional<double> depthMin;
+    std::optional<double> depthMax;
     int    beamCount = 0;
 };
 
@@ -35,9 +35,9 @@ struct GsfInfo {
 };
 
 struct FileInfo {
-    Format     format = Format::Unknown;
-    RasterInfo raster; // valid when format is BAG, GeoTIFF, or XYZ
-    GsfInfo    gsf;    // valid when format is GSF
+    Format                    format = Format::Unknown;
+    std::optional<RasterInfo> raster;  // populated for BAG, GeoTIFF, XYZ
+    std::optional<GsfInfo>    gsf;     // populated for GSF
 };
 
 struct ConvertOptions {

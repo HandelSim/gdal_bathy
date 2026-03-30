@@ -112,15 +112,16 @@ static RasterInfo RasterInfoFromDataset(GDALDataset* ds) {
 
     const char* wkt = ds->GetProjectionRef();
     if (wkt && wkt[0] != '\0') {
-        ri.crsWkt = wkt;
+        ri.crsWkt = std::string(wkt);
     }
 
     if (ds->GetRasterCount() > 0) {
         GDALRasterBand* band = ds->GetRasterBand(1);
         int hasNd = 0;
         double nd = band->GetNoDataValue(&hasNd);
-        ri.hasNoData   = (hasNd != 0);
-        ri.noDataValue = nd;
+        if (hasNd) {
+            ri.noDataValue = nd;
+        }
     }
 
     return ri;
@@ -139,10 +140,11 @@ FileInfo QueryFile(const std::filesystem::path& inputPath) {
         // Read GSF pings
         int handle = -1;
         if (gsfOpen(inputPath.string().c_str(), GSF_READONLY, &handle) < 0) {
-            throw std::runtime_error("queryFile: cannot open GSF file: " +
+            throw std::runtime_error("QueryFile: cannot open GSF file: " +
                                      inputPath.string());
         }
 
+        GsfInfo& gi = fi.gsf.emplace();
         gsfRecords rec;
         gsfDataID  id;
         memset(&rec, 0, sizeof(rec));
@@ -173,22 +175,21 @@ FileInfo QueryFile(const std::filesystem::path& inputPath) {
                         pi.depthMin = mn;
                         pi.depthMax = mx;
                     }
-                    fi.gsf.pings.push_back(pi);
+                    gi.pings.push_back(pi);
                 } else if (pingCount > kMaxPings) {
                     collectPings = false;
-                    fi.gsf.pings.clear();
+                    gi.pings.clear();
                 }
             }
         }
         gsfClose(handle);
-        fi.gsf.pingCount = pingCount;
+        gi.pingCount = pingCount;
         return fi;
     }
 
     // For raster formats, use GDAL
     std::string openPath = inputPath.string();
 
-    // XYZ special: ensure we open via GDAL
     GDALDataset* rawDs = nullptr;
     if (fi.format == Format::BAG) {
         rawDs = static_cast<GDALDataset*>(
@@ -200,7 +201,7 @@ FileInfo QueryFile(const std::filesystem::path& inputPath) {
     }
 
     if (!rawDs) {
-        throw std::runtime_error("queryFile: GDAL cannot open: " +
+        throw std::runtime_error("QueryFile: GDAL cannot open: " +
                                  inputPath.string() +
                                  " (" + CPLGetLastErrorMsg() + ")");
     }
@@ -513,6 +514,12 @@ void ConvertFile(const std::filesystem::path& inputPath,
                  const ConvertOptions& opts) {
     EnsureGdalInit();
 
+    // Create output directory if it doesn't exist
+    auto outDir = outputPath.parent_path();
+    if (!outDir.empty() && !std::filesystem::exists(outDir)) {
+        std::filesystem::create_directories(outDir);
+    }
+
     Format srcFormat = DetectFormat(inputPath);
 
     // GSF → raster
@@ -678,22 +685,21 @@ std::string DescribeFile(const std::filesystem::path& inputPath) {
     os << "File:   " << inputPath.filename().string() << "\n";
     os << "Format: " << FormatName(fi.format) << "\n";
 
-    if (fi.format == Format::GSF) {
-        os << "Pings:  " << fi.gsf.pingCount << "\n";
-        if (!fi.gsf.pings.empty()) {
+    if (fi.gsf) {
+        auto& g = *fi.gsf;
+        os << "Pings:  " << g.pingCount << "\n";
+        if (!g.pings.empty()) {
             double minLat = 1e18, maxLat = -1e18;
             double minLon = 1e18, maxLon = -1e18;
             double minD = 1e18, maxD = -1e18;
             int totalBeams = 0;
-            for (auto& p : fi.gsf.pings) {
+            for (auto& p : g.pings) {
                 minLat = std::min(minLat, p.latitude);
                 maxLat = std::max(maxLat, p.latitude);
                 minLon = std::min(minLon, p.longitude);
                 maxLon = std::max(maxLon, p.longitude);
-                if (p.depthMin != 0.0 || p.depthMax != 0.0) {
-                    minD = std::min(minD, p.depthMin);
-                    maxD = std::max(maxD, p.depthMax);
-                }
+                if (p.depthMin) minD = std::min(minD, *p.depthMin);
+                if (p.depthMax) maxD = std::max(maxD, *p.depthMax);
                 totalBeams += p.beamCount;
             }
             os << std::fixed << std::setprecision(6);
@@ -703,23 +709,23 @@ std::string DescribeFile(const std::filesystem::path& inputPath) {
             if (minD < 1e17)
                 os << "Depth:  " << minD << " to " << maxD << "\n";
             os << "Beams:  " << totalBeams << " total\n";
-        } else if (fi.gsf.pingCount == 0) {
+        } else if (g.pingCount == 0) {
             os << "  (no bathymetry ping records — file may contain only metadata)\n";
         } else {
             os << "  (ping details omitted — count exceeds 10000)\n";
         }
-    } else {
-        auto& r = fi.raster;
+    } else if (fi.raster) {
+        auto& r = *fi.raster;
         os << "Size:   " << r.width << " x " << r.height << " (" << r.bandCount << " band"
            << (r.bandCount != 1 ? "s" : "") << ")\n";
         os << std::fixed << std::setprecision(10);
         os << "Origin: (" << r.originX << ", " << r.originY << ")\n";
         os << "Pixel:  (" << r.pixelSizeX << ", " << r.pixelSizeY << ")\n";
-        if (r.hasNoData)
-            os << "NoData: " << r.noDataValue << "\n";
-        if (!r.crsWkt.empty()) {
+        if (r.noDataValue)
+            os << "NoData: " << *r.noDataValue << "\n";
+        if (r.crsWkt) {
             OGRSpatialReference srs;
-            srs.importFromWkt(r.crsWkt.c_str());
+            srs.importFromWkt(r.crsWkt->c_str());
             const char* name = srs.GetName();
             const char* auth = srs.GetAuthorityName(nullptr);
             const char* code = srs.GetAuthorityCode(nullptr);

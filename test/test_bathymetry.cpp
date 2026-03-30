@@ -104,9 +104,10 @@ static void test_query_geotiff() {
     fs::path p = "test/data/tif/synthetic.tif";
     bathy::FileInfo fi = bathy::QueryFile(p);
     EXPECT_TRUE(fi.format == bathy::Format::GeoTIFF,  "format==GeoTIFF");
-    EXPECT_TRUE(fi.raster.width  == 100, "width==100");
-    EXPECT_TRUE(fi.raster.height == 100, "height==100");
-    EXPECT_TRUE(!fi.raster.crsWkt.empty(), "crsWkt non-empty");
+    EXPECT_TRUE(fi.raster.has_value(), "raster is populated");
+    EXPECT_TRUE(fi.raster->width  == 100, "width==100");
+    EXPECT_TRUE(fi.raster->height == 100, "height==100");
+    EXPECT_TRUE(fi.raster->crsWkt.has_value(), "crsWkt populated");
     passMsg("test_query_geotiff");
 }
 
@@ -143,10 +144,11 @@ static void test_query_all_bags() {
             EXPECT_TRUE(fi.format == bathy::Format::BAG,
                         "format==BAG for " + p.filename().string());
 
-            bool hasCrs = !fi.raster.crsWkt.empty();
+            bool hasCrs = fi.raster && fi.raster->crsWkt.has_value();
             std::printf("  %-42s  %5dx%-5d  %5s  %s\n",
                         p.filename().string().c_str(),
-                        fi.raster.width, fi.raster.height,
+                        fi.raster ? fi.raster->width : 0,
+                        fi.raster ? fi.raster->height : 0,
                         "no",
                         hasCrs ? "YES" : "no");
 
@@ -201,8 +203,9 @@ static void test_query_xyz() {
     fs::path p = "test/data/xyz/sample.xyz";
     bathy::FileInfo fi = bathy::QueryFile(p);
     EXPECT_TRUE(fi.format == bathy::Format::XYZ, "format==XYZ");
-    EXPECT_TRUE(fi.raster.width  == 20, "width==20");
-    EXPECT_TRUE(fi.raster.height == 20, "height==20");
+    EXPECT_TRUE(fi.raster.has_value(), "raster is populated");
+    EXPECT_TRUE(fi.raster->width  == 20, "width==20");
+    EXPECT_TRUE(fi.raster->height == 20, "height==20");
     passMsg("test_query_xyz");
 }
 
@@ -223,8 +226,8 @@ static void test_query_gsf() {
             bathy::FileInfo fi = bathy::QueryFile(p);
             EXPECT_TRUE(fi.format == bathy::Format::GSF,
                         "format==GSF for " + p.filename().string());
-            std::cout << "  " << p.filename() << ": pingCount=" << fi.gsf.pingCount << "\n";
-            if (fi.gsf.pingCount > 0) anyPings = true;
+            std::cout << "  " << p.filename() << ": pingCount=" << (fi.gsf ? fi.gsf->pingCount : 0) << "\n";
+            if (fi.gsf && fi.gsf->pingCount > 0) anyPings = true;
         } catch (std::exception& e) {
             // Some single-record files may have 0 pings — that's OK
             std::cout << "  " << p.filename() << ": " << e.what() << " (skipped)\n";
@@ -269,23 +272,24 @@ static void test_bag_to_geotiff_all() {
                         "output is GeoTIFF for " + stem);
 
             // Dimensions should match source
-            if (srcInfo.raster.width > 0) {
-                EXPECT_TRUE(dstInfo.raster.width == srcInfo.raster.width,
+            if (srcInfo.raster && srcInfo.raster->width > 0 && dstInfo.raster) {
+                EXPECT_TRUE(dstInfo.raster->width == srcInfo.raster->width,
                             "width matches for " + stem);
-                EXPECT_TRUE(dstInfo.raster.height == srcInfo.raster.height,
+                EXPECT_TRUE(dstInfo.raster->height == srcInfo.raster->height,
                             "height matches for " + stem);
             }
 
             // CRS check
-            if (srcInfo.raster.crsWkt.empty()) {
+            if (srcInfo.raster && !srcInfo.raster->crsWkt) {
                 // Should have been filled with assumed EPSG:4326
-                bool hasWgs = (dstInfo.raster.crsWkt.find("4326") != std::string::npos ||
-                               dstInfo.raster.crsWkt.find("WGS") != std::string::npos  ||
-                               dstInfo.raster.crsWkt.find("wgs") != std::string::npos);
-                EXPECT_TRUE(hasWgs || !dstInfo.raster.crsWkt.empty(),
+                auto& dstCrs = dstInfo.raster->crsWkt;
+                bool hasWgs = dstCrs && (dstCrs->find("4326") != std::string::npos ||
+                                         dstCrs->find("WGS") != std::string::npos  ||
+                                         dstCrs->find("wgs") != std::string::npos);
+                EXPECT_TRUE(hasWgs || (dstCrs.has_value()),
                             "no-CRS source gets default CRS for " + stem);
-            } else {
-                EXPECT_TRUE(!dstInfo.raster.crsWkt.empty(),
+            } else if (srcInfo.raster && srcInfo.raster->crsWkt) {
+                EXPECT_TRUE(dstInfo.raster && dstInfo.raster->crsWkt.has_value(),
                             "CRS preserved for " + stem);
             }
 
@@ -317,8 +321,9 @@ static void test_xyz_to_geotiff() {
 
     bathy::FileInfo fi = bathy::QueryFile(out);
     EXPECT_TRUE(fi.format == bathy::Format::GeoTIFF, "format==GeoTIFF");
-    EXPECT_TRUE(fi.raster.width  == 20, "width==20");
-    EXPECT_TRUE(fi.raster.height == 20, "height==20");
+    EXPECT_TRUE(fi.raster.has_value(), "raster is populated");
+    EXPECT_TRUE(fi.raster->width  == 20, "width==20");
+    EXPECT_TRUE(fi.raster->height == 20, "height==20");
     fs::remove(out);
     passMsg("test_xyz_to_geotiff");
 }
@@ -360,16 +365,17 @@ static void test_round_trip_bag_geotiff() {
     bathy::FileInfo fi1 = bathy::QueryFile(tmp1);
     bathy::FileInfo fi2 = bathy::QueryFile(tmp2);
 
-    EXPECT_TRUE(fi1.raster.width  == fi2.raster.width,  "round-trip width matches");
-    EXPECT_TRUE(fi1.raster.height == fi2.raster.height, "round-trip height matches");
+    EXPECT_TRUE(fi1.raster && fi2.raster, "both raster infos populated");
+    EXPECT_TRUE(fi1.raster->width  == fi2.raster->width,  "round-trip width matches");
+    EXPECT_TRUE(fi1.raster->height == fi2.raster->height, "round-trip height matches");
 
-    double dOriginX = std::abs(fi1.raster.originX - fi2.raster.originX);
-    double dOriginY = std::abs(fi1.raster.originY - fi2.raster.originY);
+    double dOriginX = std::abs(fi1.raster->originX - fi2.raster->originX);
+    double dOriginY = std::abs(fi1.raster->originY - fi2.raster->originY);
     EXPECT_TRUE(dOriginX <= 1e-10, "round-trip originX within 1e-10");
     EXPECT_TRUE(dOriginY <= 1e-10, "round-trip originY within 1e-10");
 
-    double dPixX = std::abs(fi1.raster.pixelSizeX - fi2.raster.pixelSizeX);
-    double dPixY = std::abs(fi1.raster.pixelSizeY - fi2.raster.pixelSizeY);
+    double dPixX = std::abs(fi1.raster->pixelSizeX - fi2.raster->pixelSizeX);
+    double dPixY = std::abs(fi1.raster->pixelSizeY - fi2.raster->pixelSizeY);
     EXPECT_TRUE(dPixX <= 1e-10, "round-trip pixelSizeX within 1e-10");
     EXPECT_TRUE(dPixY <= 1e-10, "round-trip pixelSizeY within 1e-10");
 
@@ -402,12 +408,13 @@ static void test_no_crs_bag() {
     bathy::ConvertFile(noCrsBag, out, opts);
 
     bathy::FileInfo fi = bathy::QueryFile(out);
-    EXPECT_TRUE(!fi.raster.crsWkt.empty(), "output has CRS");
-    bool hasWgs = (fi.raster.crsWkt.find("4326") != std::string::npos ||
-                   fi.raster.crsWkt.find("WGS 84") != std::string::npos ||
-                   fi.raster.crsWkt.find("WGS84") != std::string::npos);
+    EXPECT_TRUE(fi.raster && fi.raster->crsWkt.has_value(), "output has CRS");
+    auto& crs = *fi.raster->crsWkt;
+    bool hasWgs = (crs.find("4326") != std::string::npos ||
+                   crs.find("WGS 84") != std::string::npos ||
+                   crs.find("WGS84") != std::string::npos);
     EXPECT_TRUE(hasWgs, "output CRS contains 4326 or WGS 84");
-    std::cout << "  CRS snippet: " << fi.raster.crsWkt.substr(0, 80) << "...\n";
+    std::cout << "  CRS snippet: " << crs.substr(0, 80) << "...\n";
     fs::remove(out);
     passMsg("test_no_crs_bag");
 }
