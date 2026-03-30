@@ -39,7 +39,7 @@ using DatasetPtr = std::unique_ptr<GDALDataset, GdalDatasetDeleter>;
 // ---------------------------------------------------------------------------
 // One-time GDAL initialisation
 // ---------------------------------------------------------------------------
-static void ensureGdalInit() {
+static void EnsureGdalInit() {
     static bool done = false;
     if (!done) {
         GDALAllRegister();
@@ -50,7 +50,7 @@ static void ensureGdalInit() {
 // ---------------------------------------------------------------------------
 // Format detection — magic bytes first, extension fallback
 // ---------------------------------------------------------------------------
-static Format detectFormat(const std::filesystem::path& path) {
+static Format DetectFormat(const std::filesystem::path& path) {
     // Read first 8 bytes for magic detection
     std::ifstream f(path, std::ios::binary);
     unsigned char magic[8] = {};
@@ -96,7 +96,7 @@ static Format detectFormat(const std::filesystem::path& path) {
 // ---------------------------------------------------------------------------
 // Helper: read raster info from an open GDALDataset
 // ---------------------------------------------------------------------------
-static RasterInfo rasterInfoFromDataset(GDALDataset* ds) {
+static RasterInfo RasterInfoFromDataset(GDALDataset* ds) {
     RasterInfo ri;
     ri.width     = ds->GetRasterXSize();
     ri.height    = ds->GetRasterYSize();
@@ -130,10 +130,10 @@ static RasterInfo rasterInfoFromDataset(GDALDataset* ds) {
 // queryFile
 // ---------------------------------------------------------------------------
 FileInfo QueryFile(const std::filesystem::path& inputPath) {
-    ensureGdalInit();
+    EnsureGdalInit();
 
     FileInfo fi;
-    fi.format = detectFormat(inputPath);
+    fi.format = DetectFormat(inputPath);
 
     if (fi.format == Format::GSF) {
         // Read GSF pings
@@ -206,14 +206,14 @@ FileInfo QueryFile(const std::filesystem::path& inputPath) {
     }
     DatasetPtr ds(rawDs);
 
-    fi.raster = rasterInfoFromDataset(ds.get());
+    fi.raster = RasterInfoFromDataset(ds.get());
     return fi;
 }
 
 // ---------------------------------------------------------------------------
 // Helper: apply assumed CRS to a dataset when source has none
 // ---------------------------------------------------------------------------
-static void applyCrs(GDALDataset* ds, int epsg) {
+static void ApplyCrs(GDALDataset* ds, int epsg) {
     OGRSpatialReference srs;
     srs.importFromEPSG(epsg);
     srs.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
@@ -224,7 +224,7 @@ static void applyCrs(GDALDataset* ds, int epsg) {
 // ---------------------------------------------------------------------------
 // Post-conversion validation (raster-to-raster)
 // ---------------------------------------------------------------------------
-static void validateRasterMatch(GDALDataset* src, GDALDataset* dst,
+static void ValidateRasterMatch(GDALDataset* src, GDALDataset* dst,
                                  bool strict, const std::filesystem::path& dstPath) {
     if (!strict) return;
 
@@ -311,14 +311,14 @@ static void validateRasterMatch(GDALDataset* src, GDALDataset* dst,
 // ---------------------------------------------------------------------------
 // GSF → raster helpers
 // ---------------------------------------------------------------------------
-static void gsfToGeoTiff(const std::filesystem::path& input,
+static void GsfToGeoTiff(const std::filesystem::path& input,
                           const std::filesystem::path& output,
                           const ConvertOptions& /*opts*/) {
-    ensureGdalInit();
+    EnsureGdalInit();
 
     int handle = -1;
     if (gsfOpen(input.string().c_str(), GSF_READONLY, &handle) < 0) {
-        throw std::runtime_error("gsfToGeoTiff: cannot open GSF: " +
+        throw std::runtime_error("GsfToGeoTiff: cannot open GSF: " +
                                  input.string());
     }
 
@@ -355,7 +355,7 @@ static void gsfToGeoTiff(const std::filesystem::path& input,
     gsfClose(handle);
 
     if (pings.empty()) {
-        throw std::runtime_error("gsfToGeoTiff: no valid depth data in GSF file");
+        throw std::runtime_error("GsfToGeoTiff: no valid depth data in GSF file");
     }
 
     // Create a regular grid (nearest-neighbour)
@@ -382,7 +382,7 @@ static void gsfToGeoTiff(const std::filesystem::path& input,
                                   kCols, kRows, 1, GDT_Float32,
                                   const_cast<char**>(copts));
     if (!ds) {
-        throw std::runtime_error("gsfToGeoTiff: cannot create output: " +
+        throw std::runtime_error("GsfToGeoTiff: cannot create output: " +
                                  output.string());
     }
 
@@ -404,18 +404,18 @@ static void gsfToGeoTiff(const std::filesystem::path& input,
     GDALClose(ds);
 }
 
-static void gsfToXyz(const std::filesystem::path& input,
+static void GsfToXyz(const std::filesystem::path& input,
                       const std::filesystem::path& output,
                       const ConvertOptions& opts) {
     int handle = -1;
     if (gsfOpen(input.string().c_str(), GSF_READONLY, &handle) < 0) {
-        throw std::runtime_error("gsfToXyz: cannot open GSF: " + input.string());
+        throw std::runtime_error("GsfToXyz: cannot open GSF: " + input.string());
     }
 
     std::ofstream out(output);
     if (!out) {
         gsfClose(handle);
-        throw std::runtime_error("gsfToXyz: cannot create output: " + output.string());
+        throw std::runtime_error("GsfToXyz: cannot create output: " + output.string());
     }
 
     gsfRecords rec;
@@ -447,14 +447,14 @@ static void gsfToXyz(const std::filesystem::path& input,
 // ---------------------------------------------------------------------------
 // Raster → GSF
 // ---------------------------------------------------------------------------
-static void rasterToGsf(const std::filesystem::path& input,
+static void RasterToGsf(const std::filesystem::path& input,
                          const std::filesystem::path& output) {
-    ensureGdalInit();
+    EnsureGdalInit();
 
     GDALDataset* rawDs = static_cast<GDALDataset*>(
         GDALOpen(input.string().c_str(), GA_ReadOnly));
     if (!rawDs) {
-        throw std::runtime_error("rasterToGsf: cannot open: " + input.string());
+        throw std::runtime_error("RasterToGsf: cannot open: " + input.string());
     }
     DatasetPtr ds(rawDs);
 
@@ -469,7 +469,7 @@ static void rasterToGsf(const std::filesystem::path& input,
 
     int handle = -1;
     if (gsfOpen(output.string().c_str(), GSF_CREATE, &handle) < 0) {
-        throw std::runtime_error("rasterToGsf: cannot create GSF: " + output.string());
+        throw std::runtime_error("RasterToGsf: cannot create GSF: " + output.string());
     }
 
     std::vector<double> depths(cols), across(cols);
@@ -511,16 +511,16 @@ static void rasterToGsf(const std::filesystem::path& input,
 void ConvertFile(const std::filesystem::path& inputPath,
                  const std::filesystem::path& outputPath,
                  const ConvertOptions& opts) {
-    ensureGdalInit();
+    EnsureGdalInit();
 
-    Format srcFormat = detectFormat(inputPath);
+    Format srcFormat = DetectFormat(inputPath);
 
     // GSF → raster
     if (srcFormat == Format::GSF) {
         if (opts.targetFormat == Format::GeoTIFF) {
-            gsfToGeoTiff(inputPath, outputPath, opts);
+            GsfToGeoTiff(inputPath, outputPath, opts);
         } else if (opts.targetFormat == Format::XYZ) {
-            gsfToXyz(inputPath, outputPath, opts);
+            GsfToXyz(inputPath, outputPath, opts);
         } else {
             throw std::runtime_error(
                 "convertFile: unsupported conversion from GSF to target format");
@@ -530,7 +530,7 @@ void ConvertFile(const std::filesystem::path& inputPath,
 
     // Raster → GSF
     if (opts.targetFormat == Format::GSF) {
-        rasterToGsf(inputPath, outputPath);
+        RasterToGsf(inputPath, outputPath);
         return;
     }
 
@@ -589,7 +589,7 @@ void ConvertFile(const std::filesystem::path& inputPath,
         const char* wkt = src->GetProjectionRef();
         if (!wkt || wkt[0] == '\0') {
             srcNoCrs = true;
-            applyCrs(src.get(), opts.assumedEpsg);
+            ApplyCrs(src.get(), opts.assumedEpsg);
         }
     }
 
@@ -654,14 +654,14 @@ void ConvertFile(const std::filesystem::path& inputPath,
 
     // Post-conversion validation (raster-to-raster, skip XYZ target)
     if (opts.targetFormat != Format::XYZ && opts.targetFormat != Format::BAG) {
-        validateRasterMatch(src.get(), dst.get(), opts.strictValidation, outputPath);
+        ValidateRasterMatch(src.get(), dst.get(), opts.strictValidation, outputPath);
     }
 }
 
 // ---------------------------------------------------------------------------
 // describeFile — human-readable file info (like gdalinfo)
 // ---------------------------------------------------------------------------
-static const char* formatName(Format f) {
+static const char* FormatName(Format f) {
     switch (f) {
         case Format::BAG:     return "BAG (HDF5)";
         case Format::GeoTIFF: return "GeoTIFF";
@@ -676,7 +676,7 @@ std::string DescribeFile(const std::filesystem::path& inputPath) {
     std::ostringstream os;
 
     os << "File:   " << inputPath.filename().string() << "\n";
-    os << "Format: " << formatName(fi.format) << "\n";
+    os << "Format: " << FormatName(fi.format) << "\n";
 
     if (fi.format == Format::GSF) {
         os << "Pings:  " << fi.gsf.pingCount << "\n";
